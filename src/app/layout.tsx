@@ -36,7 +36,10 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#170c1f",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#150d2c" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f0a22" },
+  ],
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
@@ -48,6 +51,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang={locale} data-theme={theme} className={`${display.variable} ${body.variable}`} suppressHydrationWarning>
       <body>
         <I18nProvider locale={locale} dict={dictionaries[locale]}>
+          <div className="status-cover" aria-hidden />
           {children}
           <SwRegister />
         </I18nProvider>

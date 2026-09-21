@@ -84,6 +84,12 @@ for (const mode of ["dark", "light"]) {
   for (const [name, r] of Object.entries(regions)) {
     await sharp(base).extract(r).resize({ width: Math.round(r.width * 1.5), kernel: "lanczos3" }).png({ compressionLevel: 9 }).toFile(out(`brand/${name}-${mode}.png`));
   }
+  // Right-sized copies, so the browser never has to shrink a huge image 20x (that is what makes small logos look soft).
+  for (const [name, heights] of [["mark", [96, 144, 288]], ["lockup", [240, 360, 560]]]) {
+    for (const h of heights) {
+      await sharp(base).extract(regions[name]).resize({ height: h, kernel: "lanczos3" }).png({ compressionLevel: 9, palette: false }).toFile(out(`brand/${name}-${mode}-${h}.png`));
+    }
+  }
 }
 
 // ---- app icons: the mark centred on the logo's own night-sky ground ----

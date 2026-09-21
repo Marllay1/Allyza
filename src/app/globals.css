@@ -250,10 +250,23 @@ textarea.field { min-height: 96px; resize: vertical; }
 .wc-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--line); transition: width 0.5s var(--ease), background 0.4s; }
 .wc-dot[aria-current="true"] { width: 26px; background: var(--accent); }
 
+/* Installed app: content extends under the phone's status bar (white text). This band keeps the clock and
+   battery readable in BOTH themes while scrolling, and fades softly into the page. */
+.status-cover {
+  display: none;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 45; pointer-events: none;
+  height: calc(env(safe-area-inset-top) + 10px);
+  background: linear-gradient(to bottom, #150d2c 0%, #150d2c calc(100% - 14px), transparent 100%);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .status-cover { background: linear-gradient(to bottom, var(--bg) 0%, var(--bg) calc(100% - 14px), transparent 100%); } }
+:root[data-theme="dark"] .status-cover { background: linear-gradient(to bottom, var(--bg) 0%, var(--bg) calc(100% - 14px), transparent 100%); }
+@media (display-mode: standalone) { .status-cover { display: block; } }
+
 /* ═════════ motion ═════════ */
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-.rise { animation: rise 0.7s var(--ease) both; }
-.page-enter { animation: rise 0.55s var(--ease) both; }
+.rise { animation: rise 0.4s var(--ease) both; }
+.page-enter { animation: page-in 0.22s var(--ease-soft) both; }
+@keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @keyframes twinkle { 0%, 100% { opacity: 0.35; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1); } }
 .twinkle { animation: twinkle 3.6s ease-in-out infinite; }
 @keyframes drift { from { transform: translateY(-10vh) rotate(0deg); } to { transform: translateY(110vh) rotate(360deg); } }

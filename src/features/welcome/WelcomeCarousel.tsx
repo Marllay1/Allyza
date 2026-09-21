@@ -115,7 +115,7 @@ export function WelcomeCarousel({ cards, labels }: { cards: WelcomeCard[]; label
   return (
     <div ref={wrap} className="relative" style={{ ["--p" as string]: 0 }}>
       {/* soft background light that drifts with the cards */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div aria-hidden className="pointer-events-none absolute inset-0">
         <span className="wc-orb" style={{ width: 260, height: 260, left: "8%", top: "10%", background: "var(--rose)", transform: "translate3d(calc(var(--p) * -60px), 0, 0)" }} />
         <span className="wc-orb" style={{ width: 300, height: 300, right: "4%", bottom: "0", background: "var(--mauve)", transform: "translate3d(calc(var(--p) * 70px), 0, 0)" }} />
       </div>

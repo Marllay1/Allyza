@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getAuthUser, getSupabase } from "@/lib/supabase/request";
 
 export type Role = "her" | "partner";
 export type Viewer = {
@@ -23,10 +23,10 @@ export type Viewer = {
 
 /** The authoritative viewer, read from the database (never from client-supplied data). */
 export const getViewer = cache(async (): Promise<Viewer | null> => {
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return null;
-  const uid = auth.user.id;
+  const supabase = await getSupabase();
+  const user = await getAuthUser();
+  if (!user) return null;
+  const uid = user.id;
 
   const [{ data: profile }, { data: prefs }, { data: couple }] = await Promise.all([
     supabase.from("profiles").select("id, role, display_name").eq("id", uid).maybeSingle(),
