@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ALLYZA — *Her rhythm. Our little world.*
 
-## Getting Started
+A bilingual (FR/EN) installable PWA with three distinct worlds:
 
-First, run the development server:
+| World | Purpose | Who sees it |
+|---|---|---|
+| 🌷 **Her space** | Cycle, pain, mood, fatigue, food, history, statistics | Only her, plus what she explicitly shares |
+| 🌙 **The Refuge** | Soft Mode, messages, 7 mini-games, synthesized ambient sounds, poetry, breathing | Her (he can only leave messages) |
+| 💕 **Us** | Live shared journal, private photos, little things, PIN-protected vault | Only the two of them |
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Stack: Next.js 16 (App Router) · TypeScript · Tailwind 4 · Supabase (Auth, Postgres + RLS, Realtime, private Storage) · Vercel.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Create a Supabase project. In **SQL editor** run `supabase/migrations/0001_init.sql`.
+2. Authentication → URL configuration: set Site URL and add `<site>/auth/callback` to redirect URLs.
+3. `cp .env.example .env.local` and fill it in (URL + anon key are required; the service-role key and VAPID keys enable push and full account-deletion cleanup).
+4. `npm install && npm run dev`
+5. Deploy to Vercel with the same environment variables.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Flow: she signs up as **Elle/Her** → Home shows an invite code → he signs up as **Partner** and enters it on his Home. Either side can end the link (the code rotates).
 
-## Learn More
+## Privacy model (enforced in Postgres, not just the UI)
 
-To learn more about Next.js, take a look at the following resources:
+- Health tables (`periods`, `daily_logs`, `food_logs`, `sharing_settings`) are readable/writable by their owner only. The partner has **no** SELECT on them.
+- The partner reads through `partner_shared_status()`, a `SECURITY DEFINER` function that returns only what she enabled, as coarse bands (low/medium/high), with `null` for both “not shared” and “not logged”, so hidden data can't be inferred. Revocation is immediate.
+- Couple content is scoped by `is_couple_member()`. Photos live in a **private** bucket and are shown through 1-hour signed URLs; EXIF/GPS is stripped in the browser before upload.
+- The vault needs a shared PIN (bcrypt in DB, 15-min sessions, 5-strikes lockout) enforced by RLS and storage policies.
+- Notifications carry only a *kind* and a language: never message content.
+- The service worker caches only the offline shell and static assets. Private pages are `no-store`.
+- Roles cannot be changed by clients (column-level grants); account deletion cascades.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Run `npm run test:db` to replay the migration in an in-process Postgres and assert these guarantees (34 checks).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Product safeguards
 
-## Deploy on Vercel
+Cycle average is always labelled *observed* (“Cycle moyen observé : 32 jours”), never a fixed rule. No ovulation/fertility predictions, no contraceptive claims, no diagnosis; food/sugar language is non-punitive; pain nudges are neutral.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Adding a language
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Copy `src/locales/en.ts`, translate, register it in `src/lib/i18n/server.ts` and `LOCALES`. TypeScript fails the build if any key is missing.
+
+## Known limits / next steps
+
+- The rate limiter is in-memory per instance (use Upstash/Redis at scale); the vault PIN lockout is in the database.
+- Push needs VAPID keys and HTTPS; iOS requires the app to be installed to the home screen.
+- Images use signed URLs directly (not `next/image`) by design.
