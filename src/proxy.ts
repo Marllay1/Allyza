@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC = ["/", "/login", "/offline"];
+const PUBLIC = ["/", "/login", "/offline", "/session-expired"];
 
 const isPublic = (path: string) =>
   PUBLIC.some((p) => path === p || (p !== "/" && path.startsWith(p + "/")));

@@ -57,7 +57,8 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
 
 export async function requireViewer(): Promise<Viewer> {
   const v = await getViewer();
-  if (!v) redirect("/login");
+  // Not "/login": a revoked-but-unexpired token would bounce between /login and /home forever.
+  if (!v) redirect("/session-expired");
   return v;
 }
 

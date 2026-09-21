@@ -29,7 +29,7 @@ if (process.argv.includes("--cleanup")) {
   process.exit(0);
 }
 
-const who = process.argv[2] === "partner" ? "partner" : "her";
+const who = process.argv[2] === "partner" ? "partner" : process.argv[2] === "both" ? "both" : "her";
 const pw = `Dev-${Date.now()}-x!`;
 let users = await list();
 if (users.length < 2) {
@@ -58,8 +58,11 @@ if (users.length < 2) {
 // password differs per run only when users are (re)created; reset it so we can sign in now
 for (const u of users) await admin.auth.admin.updateUserById(u.id, { password: pw });
 
-const jar = new Map();
-const ssr = createServerClient(url, anon, { cookies: { getAll: () => [...jar].map(([name, value]) => ({ name, value })), setAll: (l) => l.forEach((c) => jar.set(c.name, c.value)) } });
-const { error } = await ssr.auth.signInWithPassword({ email: emailOf(who), password: pw });
-if (error) { console.error(error.message); process.exit(1); }
-console.log(JSON.stringify([...jar].map(([name, value]) => ({ name, value }))));
+async function session(k) {
+  const jar = new Map();
+  const ssr = createServerClient(url, anon, { cookies: { getAll: () => [...jar].map(([name, value]) => ({ name, value })), setAll: (l) => l.forEach((c) => jar.set(c.name, c.value)) } });
+  const { error } = await ssr.auth.signInWithPassword({ email: emailOf(k), password: pw });
+  if (error) { console.error(error.message); process.exit(1); }
+  return [...jar].map(([name, value]) => ({ name, value }));
+}
+console.log(JSON.stringify(who === "both" ? { her: await session("her"), partner: await session("partner") } : await session(who)));
