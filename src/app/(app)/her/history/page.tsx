@@ -1,6 +1,7 @@
+import { AppIcon } from "@/components/icons";
 import { Empty, PageHeader, Section } from "@/components/ui";
 import { daysBetween, type DailyLog } from "@/lib/cycle";
-import { formatDay, MOOD_EMOJI } from "@/lib/format";
+import { formatDay } from "@/lib/format";
 import { loadHerData } from "@/lib/her-data";
 import { getT } from "@/lib/i18n/server";
 import { requireHer } from "@/lib/session";
@@ -32,7 +33,7 @@ export default async function HistoryPage() {
                   <span className="size-2.5 rounded-full bg-rose shrink-0" aria-hidden />
                   <span className="flex-1">{formatDay(p.start_date, locale, { day: "numeric", month: "long", year: "numeric" })}</span>
                   {p.end_date && <span className="text-muted">{t("cycle.durationDays", { n: daysBetween(p.start_date, p.end_date) + 1 })}</span>}
-                  {next && <span className="text-muted tabular-nums">→ {daysBetween(p.start_date, next.start_date)} {t("common.daysUnit")}</span>}
+                  {next && <span className="text-muted tabular-nums inline-flex items-center gap-1"><AppIcon name="arrowRight" size={13} /> {daysBetween(p.start_date, next.start_date)} {t("common.daysUnit")}</span>}
                 </li>
               );
             })}
@@ -50,15 +51,15 @@ export default async function HistoryPage() {
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-medium">{formatDay(l.log_date, locale, { weekday: "short", day: "numeric", month: "long" })}</span>
                   <span className="flex items-center gap-2 text-sm text-muted">
-                    {l.is_period && <span title={t("cycle.flow")}>🩸{l.flow ? "·".repeat(l.flow) : ""}</span>}
-                    {l.mood && <span aria-label={t("wellbeing.mood")}>{MOOD_EMOJI[l.mood - 1]}</span>}
+                    {l.is_period && <span title={t("cycle.flow")} className="inline-flex gap-0.5 text-rose">{Array.from({ length: l.flow ?? 1 }, (_, k) => <AppIcon key={k} name="drop" size={13} />)}</span>}
+                    {l.mood && <AppIcon name={`mood${l.mood}` as "mood1"} size={18} label={t("wellbeing.mood")} />}
                   </span>
                 </div>
                 <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
                   {l.pain !== null && <span>{t("wellbeing.pain")} {l.pain}/10</span>}
                   {l.fatigue !== null && <span>{t("wellbeing.fatigue")} {l.fatigue}/10</span>}
                   {l.sugar_level && <span>{t("food.sugarShort")} {t(`food.sugar.${l.sugar_level}`)}</span>}
-                  {foodByDay.get(l.log_date) ? <span>🍎 {foodByDay.get(l.log_date)}</span> : null}
+                  {foodByDay.get(l.log_date) ? <span className="inline-flex items-center gap-1"><AppIcon name="food" size={13} /> {foodByDay.get(l.log_date)}</span> : null}
                 </div>
                 {l.symptoms.length > 0 && (
                   <div className="mt-1.5 flex flex-wrap gap-1.5">

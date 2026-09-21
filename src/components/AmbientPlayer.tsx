@@ -1,6 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n/provider";
+import { AppIcon } from "@/components/icons";
+import { readLocalPref, setLocalPref } from "@/lib/local-pref";
 
 /**
  * Ambient sounds are synthesised live with the Web Audio API: no audio files to
@@ -8,7 +10,6 @@ import { useT } from "@/lib/i18n/provider";
  */
 export const SOUNDS = ["rain", "ocean", "forest", "fire", "piano", "white"] as const;
 type Sound = (typeof SOUNDS)[number];
-const ICON: Record<Sound, string> = { rain: "🌧️", ocean: "🌊", forest: "🌲", fire: "🔥", piano: "🎹", white: "☁️" };
 
 type Stop = () => void;
 
@@ -113,8 +114,10 @@ export function AmbientPlayer() {
   const active = useRef<Map<Sound, Stop>>(new Map());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [on, setOn] = useState<Sound[]>([]);
-  const [vol, setVol] = useState(0.6);
-  const [sleep, setSleep] = useState<number>(0);
+  // Remembered on this device only. Nothing ever starts by itself: browsers forbid it and it would be rude.
+  const [vol, setVol] = useState(() => { const v = Number(readLocalPref("allyza.sound.vol")); return v >= 0 && v <= 1 && readLocalPref("allyza.sound.vol") ? v : 0.6; });
+  const [sleep, setSleep] = useState<number>(() => Number(readLocalPref("allyza.sound.sleep")) || 0);
+  const [last] = useState<string | null>(() => readLocalPref("allyza.sound.last"));
 
   const ensure = () => {
     if (!ctxRef.current) {
@@ -134,7 +137,7 @@ export function AmbientPlayer() {
 
   const toggle = (s: Sound) => {
     if (active.current.has(s)) { active.current.get(s)!(); active.current.delete(s); }
-    else { const ctx = ensure(); active.current.set(s, build(s, ctx, master.current!)); }
+    else { const ctx = ensure(); active.current.set(s, build(s, ctx, master.current!)); setLocalPref("allyza.sound.last", s); }
     setOn([...active.current.keys()]);
   };
 
@@ -154,26 +157,26 @@ export function AmbientPlayer() {
         {SOUNDS.map((s) => (
           <button key={s} aria-pressed={on.includes(s)} onClick={() => toggle(s)}
             className={`card p-5 flex flex-col items-center gap-2 transition ${on.includes(s) ? "!border-accent ring-2 ring-accent/40" : ""}`}>
-            <span className="text-4xl" aria-hidden>{ICON[s]}</span>
+            <AppIcon name={s} size={34} className="text-accent" />
             <span className="font-display text-xl">{t(`atmosphere.sounds.${s}`)}</span>
-            <span className="text-xs text-muted">{on.includes(s) ? t("atmosphere.playing") : t("atmosphere.tapToPlay")}</span>
+            <span className="text-xs text-muted">{on.includes(s) ? t("atmosphere.playing") : s === last ? t("atmosphere.lastTime") : t("atmosphere.tapToPlay")}</span>
           </button>
         ))}
       </div>
       <div className="card p-5 grid gap-4">
         <label className="grid gap-1">
           <span className="label !mb-0">{t("atmosphere.volume")}</span>
-          <input type="range" min={0} max={1} step={0.05} value={vol} onChange={(e) => setVol(Number(e.target.value))} className="w-full accent-[var(--accent)] h-8" />
+          <input type="range" min={0} max={1} step={0.05} value={vol} onChange={(e) => { setVol(Number(e.target.value)); setLocalPref("allyza.sound.vol", e.target.value); }} className="w-full accent-[var(--accent)] h-8" />
         </label>
         <div>
           <span className="label">{t("atmosphere.sleepTimer")}</span>
           <div className="flex flex-wrap gap-2">
             {[0, 15, 30, 60].map((m) => (
-              <button key={m} className="chip" aria-pressed={sleep === m} onClick={() => setSleep(m)}>{m === 0 ? t("atmosphere.noTimer") : `${m} min`}</button>
+              <button key={m} className="chip" aria-pressed={sleep === m} onClick={() => { setSleep(m); setLocalPref("allyza.sound.sleep", String(m)); }}>{m === 0 ? t("atmosphere.noTimer") : `${m} min`}</button>
             ))}
           </div>
         </div>
-        {on.length > 0 && <button className="btn" onClick={stopAll}>⏹ {t("atmosphere.stop")}</button>}
+        {on.length > 0 && <button className="btn" onClick={stopAll}><AppIcon name="stop" size={16} /> {t("atmosphere.stop")}</button>}
       </div>
       <p className="text-xs text-muted text-center text-balance">{t("atmosphere.note")}</p>
     </div>

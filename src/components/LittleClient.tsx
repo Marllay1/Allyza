@@ -9,11 +9,11 @@ import { formatDateTime } from "@/lib/format";
 import { useReactions, type Reaction } from "@/lib/use-reactions";
 import { ReactionBar } from "@/components/ReactionBar";
 import { ErrorNote } from "@/components/Feedback";
+import { AppIcon } from "@/components/icons";
 import { useUnread } from "@/components/AppShell";
 import type { ErrCode } from "@/lib/action-utils";
 
 export type Little = { id: string; author_id: string; kind: (typeof LITTLE_KINDS)[number]; body: string; answer: string | null; opened_at: string | null; created_at: string };
-const ICON = { compliment: "🌸", note: "💌", question: "❓", date_idea: "🌆", challenge: "🎯", hidden: "🔒" } as const;
 
 export function LittleClient({ coupleId, myId, items, initialReactions, names }: {
   coupleId: string; myId: string; items: Little[]; initialReactions: Reaction[]; names: { me: string; other: string };
@@ -52,12 +52,12 @@ export function LittleClient({ coupleId, myId, items, initialReactions, names }:
       <section className="card p-4 grid gap-3">
         <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t("little.kind")}>
           {LITTLE_KINDS.map((k) => (
-            <button key={k} role="radio" aria-checked={kind === k} className="chip" onClick={() => setKind(k)}>{ICON[k]} {t(`little.kinds.${k}`)}</button>
+            <button key={k} role="radio" aria-checked={kind === k} className="chip" onClick={() => setKind(k)}><AppIcon name={k} size={16} /> {t(`little.kinds.${k}`)}</button>
           ))}
         </div>
         <textarea className="field" maxLength={600} placeholder={t(`little.placeholder.${kind}`)} value={body} onChange={(e) => setBody(e.target.value)} />
         {ideas.length > 0 && (
-          <button type="button" className="btn btn-ghost text-sm self-start" onClick={() => setBody(ideas[Math.floor(Math.random() * ideas.length)])}>✨ {t("little.inspire")}</button>
+          <button type="button" className="btn btn-ghost text-sm self-start" onClick={() => setBody(ideas[Math.floor(Math.random() * ideas.length)])}><AppIcon name="sparkles" size={16} /> {t("little.inspire")}</button>
         )}
         <ErrorNote code={error} />
         <button className="btn btn-primary" disabled={pending || !body.trim()} onClick={() => run(() => addLittleAction({ kind, body }), () => setBody(""))}>
@@ -74,11 +74,11 @@ export function LittleClient({ coupleId, myId, items, initialReactions, names }:
           return (
             <li key={i.id} className={`card p-4 ${mine ? "border-accent/30" : ""}`}>
               <div className="flex items-center justify-between text-xs text-muted mb-2">
-                <span>{ICON[i.kind]} {t(`little.kinds.${i.kind}`)} · {mine ? names.me : names.other}</span>
+                <span className="inline-flex items-center gap-1.5"><AppIcon name={i.kind} size={14} /> {t(`little.kinds.${i.kind}`)} · {mine ? names.me : names.other}</span>
                 <span>{formatDateTime(i.created_at, locale)}</span>
               </div>
               {sealed ? (
-                <button className="btn btn-primary w-full" onClick={() => run(() => openLittleAction(i.id))}>🔒 {t("little.reveal")}</button>
+                <button className="btn btn-primary w-full" onClick={() => run(() => openLittleAction(i.id))}><AppIcon name="lock" size={18} /> {t("little.reveal")}</button>
               ) : (
                 <p className="font-display text-xl whitespace-pre-wrap break-words">{i.body}</p>
               )}

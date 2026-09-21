@@ -4,8 +4,8 @@
  *   • Pages, API calls, Supabase traffic, signed photo URLs are NEVER cached,
  *     so no health data or private photo ever lands in Cache Storage.
  * Push payloads carry a "kind" and a language only — never message content. */
-const VERSION = "allyza-v1";
-const SHELL = ["/offline", "/icons/icon-192.png", "/icons/icon-512.png", "/brand/allyza-mark.svg"];
+const VERSION = "allyza-v2";
+const SHELL = ["/offline", "/icons/icon-192.png", "/icons/icon-512.png", "/brand/mark-dark.png", "/brand/mark-light.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -54,15 +54,17 @@ const COPY = {
     media: "Un nouveau souvenir vous attend ✨",
     refuge: "Une petite surprise t’attend dans le Refuge 💌",
     little: "Une petite attention vous attend 💗",
+    surprise: "Une petite surprise t’attend 🎁",
   },
   en: {
     journal: "Someone wrote in your journal ❤️",
     media: "A new memory is waiting for you ✨",
     refuge: "A little surprise is waiting for you in the Refuge 💌",
     little: "A little something is waiting for you 💗",
+    surprise: "A little surprise is waiting for you 🎁",
   },
 };
-const TARGET = { journal: "/us/journal", media: "/us/memories", refuge: "/refuge/messages", little: "/us/little" };
+const TARGET = { journal: "/us/journal", media: "/us/memories", refuge: "/refuge/messages", little: "/us/little", surprise: "/us/surprises" };
 
 self.addEventListener("push", (e) => {
   let data = {};

@@ -16,6 +16,7 @@ export type Viewer = {
     notify_media: boolean;
     notify_refuge: boolean;
     notify_little: boolean;
+    notify_surprise: boolean;
   };
   couple: { id: string; herId: string; partnerId: string | null; inviteCode: string } | null;
 };
@@ -46,6 +47,7 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
       notify_media: prefs?.notify_media ?? true,
       notify_refuge: prefs?.notify_refuge ?? true,
       notify_little: prefs?.notify_little ?? true,
+      notify_surprise: prefs?.notify_surprise ?? true,
     },
     couple: couple
       ? { id: couple.id, herId: couple.her_id, partnerId: couple.partner_id, inviteCode: couple.invite_code }

@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { changePasswordAction, deleteAccountAction, signOutAction } from "@/actions/auth";
+import { changePasswordAction, signOutAction } from "@/actions/auth";
+import { AppIcon } from "@/components/icons";
 import { removePushSubscriptionAction, savePushSubscriptionAction } from "@/actions/notifications";
 import { setThemeAction, updateDisplayNameAction, updatePrefsAction } from "@/actions/prefs";
 import { updateSharingAction } from "@/actions/cycle";
@@ -49,7 +50,7 @@ export function NameForm({ name }: { name: string }) {
   return (
     <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); start(async () => { const r = await updateDisplayNameAction(v); if (r.ok) { setSaved(true); router.refresh(); } }); }}>
       <input className="field" value={v} maxLength={40} onChange={(e) => { setV(e.target.value); setSaved(false); }} aria-label={t("auth.displayName")} />
-      <button className="btn" disabled={pending || !v.trim() || v === name}>{saved ? "✓" : t("common.save")}</button>
+      <button className="btn" disabled={pending || !v.trim() || v === name}>{saved ? <AppIcon name="check" size={18} /> : t("common.save")}</button>
     </form>
   );
 }
@@ -91,7 +92,7 @@ export function SharingForm({ initial, herPartnerLinked }: { initial: Sharing; h
   );
 }
 
-export function PrefSwitches({ prefs, showRefuge }: { prefs: { notify_journal: boolean; notify_media: boolean; notify_refuge: boolean; notify_little: boolean }; showRefuge: boolean }) {
+export function PrefSwitches({ prefs, showRefuge }: { prefs: { notify_journal: boolean; notify_media: boolean; notify_refuge: boolean; notify_little: boolean; notify_surprise: boolean }; showRefuge: boolean }) {
   const t = useT();
   const router = useRouter();
   const [p, setP] = useState(prefs);
@@ -103,6 +104,7 @@ export function PrefSwitches({ prefs, showRefuge }: { prefs: { notify_journal: b
       <Switch checked={p.notify_media} onChange={(v) => set("notify_media", v)} label={t("notifications.media")} />
       {showRefuge && <Switch checked={p.notify_refuge} onChange={(v) => set("notify_refuge", v)} label={t("notifications.refuge")} />}
       <Switch checked={p.notify_little} onChange={(v) => set("notify_little", v)} label={t("notifications.little")} />
+      <Switch checked={p.notify_surprise} onChange={(v) => set("notify_surprise", v)} label={t("notifications.surprise")} />
     </div>
   );
 }
@@ -149,7 +151,7 @@ export function PushToggle({ vapidKey }: { vapidKey: string }) {
       {state === "unsupported" && <Notice>{t("notifications.unsupported")}</Notice>}
       {state === "denied" && <Notice tone="care">{t("notifications.denied")}</Notice>}
       <ErrorNote code={error} />
-      {state === "off" && <button className="btn btn-primary" onClick={enable}>🔔 {t("notifications.enable")}</button>}
+      {state === "off" && <button className="btn btn-primary" onClick={enable}><AppIcon name="bell" size={18} /> {t("notifications.enable")}</button>}
       {state === "on" && <button className="btn" onClick={disable}>{t("notifications.disable")}</button>}
     </div>
   );
@@ -176,34 +178,12 @@ export function PasswordForm() {
   );
 }
 
-export function DeleteAccount({ isHer }: { isHer: boolean }) {
-  const t = useT();
-  const [open, setOpen] = useState(false);
-  const [pw, setPw] = useState("");
-  const [error, setError] = useState<ErrCode | null>(null);
-  const [pending, start] = useTransition();
-  return (
-    <div className="grid gap-3">
-      {!open ? (
-        <button className="btn btn-danger" onClick={() => setOpen(true)}>{t("account.delete")}</button>
-      ) : (
-        <div className="rounded-2xl border border-[#d0566a]/40 p-4 grid gap-3">
-          <p className="text-sm">{isHer ? t("account.deleteWarnHer") : t("account.deleteWarnPartner")}</p>
-          <input className="field" type="password" autoComplete="current-password" placeholder={t("account.confirmWithPassword")} value={pw} onChange={(e) => setPw(e.target.value)} />
-          <ErrorNote code={error} />
-          <div className="flex gap-2">
-            <button className="btn flex-1" onClick={() => { setOpen(false); setPw(""); }}>{t("common.cancel")}</button>
-            <button className="btn btn-danger flex-1" disabled={pending || !pw}
-              onClick={() => start(async () => { const r = await deleteAccountAction({ password: pw }); if (r && !r.ok) setError(r.error); })}>{t("account.deleteConfirm")}</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function SignOutButton() {
   const t = useT();
   const [pending, start] = useTransition();
-  return <button className="btn w-full" disabled={pending} onClick={() => start(() => signOutAction())}>{t("account.signOut")}</button>;
+  return (
+    <button className="btn w-full" disabled={pending} onClick={() => start(() => signOutAction())}>
+      <AppIcon name="logout" size={18} /> {t("account.signOut")}
+    </button>
+  );
 }

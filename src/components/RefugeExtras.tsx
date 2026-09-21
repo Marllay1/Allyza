@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { updatePrefsAction } from "@/actions/prefs";
 import { useT } from "@/lib/i18n/provider";
 import { toISODate } from "@/lib/cycle";
+import { AppIcon } from "@/components/icons";
 import { useDayNumber } from "@/lib/use-day-index";
 
 export function PoetryReader({ poems }: { poems: string[] }) {
@@ -18,8 +19,8 @@ export function PoetryReader({ poems }: { poems: string[] }) {
         <p className="font-display text-2xl sm:text-3xl leading-relaxed whitespace-pre-line">{day === 0 ? "" : poems[i]}</p>
       </article>
       <div className="flex gap-3">
-        <button className="btn flex-1" onClick={() => setStep((s) => s - 1)}>‹ {t("common.previous")}</button>
-        <button className="btn flex-1" onClick={() => setStep((s) => s + 1)}>{t("common.next")} ›</button>
+        <button className="btn flex-1" onClick={() => setStep((s) => s - 1)}><AppIcon name="back" size={18} /> {t("common.previous")}</button>
+        <button className="btn flex-1" onClick={() => setStep((s) => s + 1)}>{t("common.next")} <AppIcon name="forward" size={18} /></button>
       </div>
       <p className="text-center text-xs text-muted">{i + 1} / {poems.length}</p>
     </div>
@@ -83,7 +84,7 @@ export function TinyComforts({ items }: { items: string[] }) {
       {items.map((it, i) => (
         <li key={it}>
           <button className="card w-full text-left p-4 flex items-center gap-3" aria-pressed={done.includes(i)} onClick={() => toggle(i)}>
-            <span className={`size-7 rounded-full border grid place-items-center text-sm ${done.includes(i) ? "bg-accent text-accent-ink border-transparent" : "border-line"}`} aria-hidden>{done.includes(i) ? "✓" : ""}</span>
+            <span className={`size-7 rounded-full border grid place-items-center text-sm ${done.includes(i) ? "bg-accent text-accent-ink border-transparent" : "border-line"}`} aria-hidden>{done.includes(i) ? <AppIcon name="check" size={16} /> : null}</span>
             <span className={done.includes(i) ? "line-through text-muted" : ""}>{it}</span>
           </button>
         </li>
@@ -100,7 +101,7 @@ export function SoftToggle({ on }: { on: boolean }) {
   return (
     <button className={`btn ${on ? "" : "btn-primary"} w-full !min-h-14`} disabled={pending}
       onClick={() => start(async () => { await updatePrefsAction({ soft_mode: !on }); router.refresh(); })}>
-      {on ? t("soft.turnOff") : `🌸 ${t("soft.turnOn")}`}
+      {on ? t("soft.turnOff") : <><AppIcon name="soft" size={18} /> {t("soft.turnOn")}</>}
     </button>
   );
 }

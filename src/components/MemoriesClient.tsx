@@ -12,6 +12,7 @@ import { useSignedUrls } from "@/lib/use-signed-urls";
 import { useReactions, type Reaction } from "@/lib/use-reactions";
 import { ReactionBar } from "@/components/ReactionBar";
 import { ErrorNote } from "@/components/Feedback";
+import { AppIcon } from "@/components/icons";
 import { useUnread } from "@/components/AppShell";
 import type { ErrCode } from "@/lib/action-utils";
 
@@ -115,7 +116,7 @@ export function MemoriesClient({ coupleId, myId, initial, initialReactions, name
             {MEDIA_CATEGORIES.map((c) => <option key={c} value={c}>{catLabel(c)}</option>)}
           </select>
           <label className={`btn btn-primary cursor-pointer ${busy ? "opacity-60 pointer-events-none" : ""}`}>
-            {busy ? t("common.loading") : `📷 ${t("memories.add")}`}
+            {busy ? t("common.loading") : <><AppIcon name="camera" size={18} /> {t("memories.add")}</>}
             <input type="file" accept="image/*" multiple className="sr-only" onChange={(e) => { upload(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
           </label>
         </div>
@@ -123,7 +124,11 @@ export function MemoriesClient({ coupleId, myId, initial, initialReactions, name
       </div>
 
       {shown.length === 0 ? (
-        <p className="text-center text-muted py-12 text-balance">{t("memories.empty")}</p>
+        <div className="text-center py-12 grid justify-items-center gap-2">
+          <AppIcon name="memories" size={30} className="text-muted opacity-60" />
+          <p className="font-display text-2xl">{t("memories.emptyTitle")}</p>
+          <p className="text-muted text-balance max-w-xs">{t("memories.emptyBody")}</p>
+        </div>
       ) : (
         <ul className="grid grid-cols-3 gap-1.5 sm:gap-2">
           {shown.map((p) => (
@@ -141,15 +146,15 @@ export function MemoriesClient({ coupleId, myId, initial, initialReactions, name
       {current && (
         <div role="dialog" aria-modal="true" aria-label={t("memories.viewer")} className="fixed inset-0 z-50 bg-black/90 flex flex-col text-white">
           <div className="flex items-center justify-between p-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-            <span className="text-sm opacity-80">{catLabel(current.category)} · {formatDay(current.taken_on, locale, { day: "numeric", month: "long", year: "numeric" })} · {current.author_id === myId ? names.me : names.other}</span>
-            <button className="size-11 rounded-full bg-white/10" aria-label={t("common.close")} onClick={() => setOpen(null)}>✕</button>
+            <span className="text-sm opacity-80 inline-flex items-center gap-2"><AppIcon name="lock" size={13} /> <span className="sr-only">{t("couple.privateOnAllyza")}</span>{catLabel(current.category)} · {formatDay(current.taken_on, locale, { day: "numeric", month: "long", year: "numeric" })} · {current.author_id === myId ? names.me : names.other}</span>
+            <button className="size-11 rounded-full bg-white/10" aria-label={t("common.close")} onClick={() => setOpen(null)}><AppIcon name="close" size={20} /></button>
           </div>
           <div className="flex-1 min-h-0 flex items-center justify-center relative px-2">
-            {idx > 0 && <button className="absolute left-1 z-10 size-11 rounded-full bg-white/10" aria-label={t("common.previous")} onClick={() => setOpen(shown[idx - 1].id)}>‹</button>}
+            {idx > 0 && <button className="absolute left-1 z-10 size-11 rounded-full bg-white/10" aria-label={t("common.previous")} onClick={() => setOpen(shown[idx - 1].id)}><AppIcon name="back" size={22} /></button>}
             {urls[current.storage_path]
               ?   <img src={urls[current.storage_path]} alt={current.caption ?? ""} className="max-h-full max-w-full object-contain rounded-xl" />
               : <span className="animate-pulse">…</span>}
-            {idx < shown.length - 1 && <button className="absolute right-1 z-10 size-11 rounded-full bg-white/10" aria-label={t("common.next")} onClick={() => setOpen(shown[idx + 1].id)}>›</button>}
+            {idx < shown.length - 1 && <button className="absolute right-1 z-10 size-11 rounded-full bg-white/10" aria-label={t("common.next")} onClick={() => setOpen(shown[idx + 1].id)}><AppIcon name="forward" size={22} /></button>}
           </div>
           <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] grid gap-3 bg-gradient-to-t from-black to-transparent">
             {current.author_id === myId ? (

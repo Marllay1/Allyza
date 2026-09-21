@@ -6,6 +6,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { daysBetween, toISODate, type Period } from "@/lib/cycle";
 import { formatDay } from "@/lib/format";
 import { ErrorNote } from "@/components/Feedback";
+import { AppIcon } from "@/components/icons";
 import type { ErrCode } from "@/lib/action-utils";
 
 export function PeriodManager({ periods }: { periods: Period[] }) {
@@ -35,7 +36,7 @@ export function PeriodManager({ periods }: { periods: Period[] }) {
           </button>
         ) : (
           <button className="btn btn-primary" disabled={pending} onClick={() => run(() => startPeriodAction(today))}>
-            🩸 {t("cycle.startToday")}
+            <AppIcon name="drop" size={18} /> {t("cycle.startToday")}
           </button>
         )}
         <p className="text-xs text-muted text-center">{t("cycle.variableHint")}</p>
@@ -46,7 +47,7 @@ export function PeriodManager({ periods }: { periods: Period[] }) {
       <ul className="grid gap-2">
         {periods.map((p) => (
           <li key={p.id} className="flex items-center gap-3 rounded-2xl border border-line px-4 py-3">
-            <span aria-hidden>🩸</span>
+            <AppIcon name="drop" size={18} className="text-rose" />
             <div className="flex-1 min-w-0">
               <div className="font-medium">{formatDay(p.start_date, locale)}</div>
               <div className="text-xs text-muted">
@@ -63,7 +64,7 @@ export function PeriodManager({ periods }: { periods: Period[] }) {
               />
             )}
             <button className="btn btn-ghost btn-danger !min-h-10 !px-3" aria-label={t("common.delete")} disabled={pending}
-              onClick={() => confirm(t("cycle.confirmDelete")) && run(() => deletePeriodAction(p.id))}>✕</button>
+              onClick={() => confirm(t("cycle.confirmDelete")) && run(() => deletePeriodAction(p.id))}><AppIcon name="close" size={16} /></button>
           </li>
         ))}
       </ul>
@@ -74,14 +75,14 @@ export function PeriodManager({ periods }: { periods: Period[] }) {
         <div className="flex gap-2 mt-3">
           <input type="date" className="field" max={today} value={pastDate} onChange={(e) => setPastDate(e.target.value)} aria-label={t("cycle.startDate")} />
           <button type="button" className="btn" disabled={!pastDate}
-            onClick={() => { setQueued((q) => [...new Set([...q, pastDate])].sort()); setPastDate(""); }}>+</button>
+            onClick={() => { setQueued((q) => [...new Set([...q, pastDate])].sort()); setPastDate(""); }} aria-label={t("cycle.addPast")}><AppIcon name="plus" size={18} /></button>
         </div>
         {queued.length > 0 && (
           <div className="mt-3 grid gap-3">
             <div className="flex flex-wrap gap-2">
               {queued.map((d) => (
                 <button key={d} className="chip" aria-pressed="true" onClick={() => setQueued((q) => q.filter((x) => x !== d))}>
-                  {formatDay(d, locale, { day: "numeric", month: "short", year: "numeric" })} ✕
+                  {formatDay(d, locale, { day: "numeric", month: "short", year: "numeric" })} <AppIcon name="close" size={13} />
                 </button>
               ))}
             </div>

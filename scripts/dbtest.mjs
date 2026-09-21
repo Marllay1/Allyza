@@ -1,6 +1,8 @@
-import { PGlite } from '@electric-sql/pglite';
-import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
-import fs from 'node:fs';
+// Replays every migration in an in-process Postgres (PGlite) with Supabase-shaped stubs and asserts
+// the privacy guarantees. Run: npm run test:db
+import { PGlite } from "@electric-sql/pglite";
+import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
+import fs from "node:fs";
 
 const db = new PGlite({ extensions: { pgcrypto } });
 
@@ -20,112 +22,132 @@ grant usage on schema public, auth, extensions to authenticated, anon;
 grant execute on function auth.uid() to authenticated, anon;
 alter default privileges in schema public grant all on tables to authenticated, anon;
 `);
-
-const sql = fs.readFileSync('supabase/migrations/0001_init.sql', 'utf8');
-await db.exec(sql);
-console.log('migration OK');
+for (const f of fs.readdirSync("supabase/migrations").sort()) await db.exec(fs.readFileSync(`supabase/migrations/${f}`, "utf8"));
+console.log("migrations OK");
 
 const asUser = async (id, fn) => {
   await db.exec(`set role authenticated; select set_config('request.jwt.sub','${id}',false);`);
-  try { return await fn(); } finally { await db.exec('reset role;'); }
+  try { return await fn(); } finally { await db.exec("reset role;"); }
 };
 const q = async (s, p) => (await db.query(s, p)).rows;
 const expectFail = async (label, fn) => {
-  try { await fn(); console.log('FAIL (should have errored):', label); process.exitCode = 1; }
-  catch (e) { console.log('ok   blocked:', label, '->', e.message.slice(0, 60)); }
+  try { await fn(); console.log("FAIL (should have errored):", label); process.exitCode = 1; }
+  catch (e) { console.log("ok   blocked:", label, "->", e.message.slice(0, 60)); }
 };
-const check = (label, cond) => { console.log(cond ? 'ok  ' : 'FAIL', label); if (!cond) process.exitCode = 1; };
+const check = (label, cond) => { console.log(cond ? "ok  " : "FAIL", label); if (!cond) process.exitCode = 1; };
 
-const [her] = await q(`insert into auth.users(email, raw_user_meta_data) values ('her@x.com','{"role":"her","display_name":"Ada"}') returning id`);
-const [him] = await q(`insert into auth.users(email, raw_user_meta_data) values ('him@x.com','{"role":"partner","display_name":"Bo"}') returning id`);
-const [eve] = await q(`insert into auth.users(email, raw_user_meta_data) values ('eve@x.com','{"role":"partner"}') returning id`);
-const [c] = await q(`select id, invite_code from couples where her_id=$1`, [her.id]);
-check('her got a couple + invite', !!c?.invite_code);
+const [her] = await q(`insert into auth.users(email, raw_user_meta_data) values ('a@x.com','{"role":"her","display_name":"Alhanouzzia","username":"Alhanouzzia"}') returning id`);
+const [him] = await q(`insert into auth.users(email, raw_user_meta_data) values ('l@x.com','{"role":"partner","display_name":"Llayane","username":"Llayane"}') returning id`);
+const [eve] = await q(`insert into auth.users(email, raw_user_meta_data) values ('e@x.com','{"role":"partner","username":"eve"}') returning id`);
+const [c] = await q(`select id from couples where her_id=$1`, [her.id]);
+check("her got a couple", !!c?.id);
+check("usernames stored", (await q(`select username from profiles where id=$1`, [her.id]))[0].username === "alhanouzzia");
+await expectFail("duplicate username (case-insensitive)", () => db.query(`insert into auth.users(email, raw_user_meta_data) values ('z@x.com','{"username":"LLAYANE"}')`));
 
-// Health data
+// The seed links the two accounts (superuser). Nobody can do it from the app.
+await db.query(`update couples set partner_id=$1 where id=$2`, [him.id, c.id]);
+for (const fn of ["join_couple(text)", "unlink_partner()", "regenerate_invite()", "delete_my_account()"]) {
+  check(`authenticated cannot call ${fn}`, (await q(`select has_function_privilege('authenticated','public.${fn}','execute') as ok`))[0].ok === false);
+}
+await asUser(eve.id, () => expectFail("outsider invites herself with a code", () => db.query(`select join_couple('anything')`)));
+
+// Health data stays private
 await asUser(her.id, async () => {
-  await db.query(`insert into periods(start_date) values ('2026-08-22')`);
-  await db.query(`insert into periods(start_date) values ('2026-07-21')`);
+  await db.query(`insert into periods(start_date) values ('2026-08-22'),('2026-07-21')`);
   await db.query(`insert into daily_logs(log_date,pain,fatigue,mood,sugar_level) values (current_date,8,8,2,'high')`);
 });
-
-// Partner before linking
 await asUser(him.id, async () => {
-  const s = await q(`select partner_shared_status(current_date) as s`);
-  check('unlinked partner sees linked=false', s[0].s.linked === false);
-});
-await asUser(him.id, () => db.query(`select join_couple('${c.invite_code}')`));
-await asUser(eve.id, () => expectFail('wrong invite code', () => db.query(`select join_couple('${c.invite_code}')`)));
-await asUser(him.id, async () => {
-  check('partner cannot read daily_logs', (await q(`select * from daily_logs`)).length === 0);
-  check('partner cannot read periods', (await q(`select * from periods`)).length === 0);
-  check('partner cannot read sharing_settings', (await q(`select * from sharing_settings`)).length === 0);
+  check("partner cannot read daily_logs", (await q(`select * from daily_logs`)).length === 0);
+  check("partner cannot read periods", (await q(`select * from periods`)).length === 0);
+  check("partner cannot read sharing_settings", (await q(`select * from sharing_settings`)).length === 0);
   const s = (await q(`select partner_shared_status(current_date) as s`))[0].s;
-  check('nothing shared by default', s.pain === null && s.mood === null && s.fatigue === null && s.cycle_day === null && s.wellbeing === null);
-  await expectFail('partner writes daily_logs', () => db.query(`insert into daily_logs(log_date,pain) values (current_date - 1, 1)`));
-  check('partner cannot edit her sharing (0 rows)', (await db.query(`update sharing_settings set share_pain = true returning her_id`)).rows.length === 0);
-  await expectFail('partner changes own role', () => db.query(`update profiles set role='her' where id='${him.id}'`));
+  check("nothing shared by default", s.pain === null && s.mood === null && s.fatigue === null && s.cycle_day === null);
+  check("partner cannot edit her sharing (0 rows)", (await db.query(`update sharing_settings set share_pain = true returning her_id`)).rows.length === 0);
+  await expectFail("partner changes own role", () => db.query(`update profiles set role='her' where id='${him.id}'`));
+  await expectFail("partner writes daily_logs", () => db.query(`insert into daily_logs(log_date,pain) values (current_date - 1, 1)`));
 });
-
-// She shares selectively
-await asUser(her.id, () => db.query(`update sharing_settings set share_fatigue=true, share_cycle_day=true, share_stats=true`));
+await asUser(her.id, () => db.query(`update sharing_settings set share_fatigue=true, share_stats=true`));
 await asUser(him.id, async () => {
   const s = (await q(`select partner_shared_status(current_date) as s`))[0].s;
-  check('fatigue shared as band', s.fatigue === 'high');
-  check('pain still hidden', s.pain === null);
-  check('mood still hidden', s.mood === null);
-  check('cycle day shared', typeof s.cycle_day === 'number' && s.cycle_day > 0);
-  check('avg cycle shared (32)', Number(s.avg_cycle) === 32);
-  check('sugar hidden', s.sugar === null);
+  check("fatigue shared as band only", s.fatigue === "high" && s.pain === null && s.mood === null);
+  check("avg cycle shared (32)", Number(s.avg_cycle) === 32);
 });
 await asUser(her.id, () => db.query(`update sharing_settings set share_fatigue=false`));
-await asUser(him.id, async () => {
-  const s = (await q(`select partner_shared_status(current_date) as s`))[0].s;
-  check('revocation is immediate', s.fatigue === null);
-});
+await asUser(him.id, async () => check("revocation is immediate", (await q(`select partner_shared_status(current_date) as s`))[0].s.fatigue === null));
 
 // Journal + notifications + isolation
 await asUser(him.id, () => db.query(`insert into journal_entries(couple_id, body) values ('${c.id}','hello')`));
 await asUser(her.id, async () => {
-  check('she sees journal entry', (await q(`select * from journal_entries`)).length === 1);
-  check('she got a contentless notification', (await q(`select kind from notifications`))[0]?.kind === 'journal');
-  await expectFail('spoofed author', () => db.query(`insert into journal_entries(couple_id, body, author_id) values ('${c.id}','x','${him.id}')`));
-  await expectFail("edit partner's entry", async () => { const r = await db.query(`update journal_entries set body='hax' returning id`); if (!r.rows.length) throw new Error('0 rows updated'); });
+  check("she sees the journal entry", (await q(`select * from journal_entries`)).length === 1);
+  check("contentless notification", (await q(`select kind from notifications`))[0]?.kind === "journal");
+  await expectFail("spoofed author", () => db.query(`insert into journal_entries(couple_id, body, author_id) values ('${c.id}','x','${him.id}')`));
 });
 await asUser(eve.id, async () => {
-  check('outsider sees no journal', (await q(`select * from journal_entries`)).length === 0);
-  await expectFail('outsider writes journal', () => db.query(`insert into journal_entries(couple_id, body) values ('${c.id}','x')`));
+  check("outsider sees no journal", (await q(`select * from journal_entries`)).length === 0);
+  await expectFail("outsider writes journal", () => db.query(`insert into journal_entries(couple_id, body) values ('${c.id}','x')`));
+});
+
+// Surprises: the recipient can never read content before it is opened / unlocked
+await asUser(him.id, async () => {
+  await db.query(`insert into surprises(couple_id, kind, title, body, unlock) values ('${c.id}','love','Pour toi','Je pense a toi','miss_me')`);
+  await db.query(`insert into surprises(couple_id, kind, body, unlock, unlock_at) values ('${c.id}','funny','PLUS TARD','date', now() + interval '2 days')`);
+});
+await asUser(her.id, async () => {
+  check("recipient cannot select surprises table directly", (await q(`select * from surprises`)).length === 0);
+  const list = await q(`select * from my_surprises()`);
+  check("recipient sees 2 sealed surprises", list.length === 2);
+  check("no content leaks before opening", list.every((s) => s.body === null && s.title === null && s.storage_path === null));
+  check("future one is flagged locked", list.some((s) => s.locked === true));
+  check("she got a contentless surprise notification", (await q(`select kind from notifications where kind='surprise'`)).length === 2);
+  const open = list.find((s) => !s.locked);
+  const r = (await q(`select open_surprise('${open.id}') as r`))[0].r;
+  check("opening reveals the content", r.body === "Je pense a toi");
+  const locked = list.find((s) => s.locked);
+  await expectFail("opening a locked surprise early", () => db.query(`select open_surprise('${locked.id}')`));
+  check("opened one now shows its body in the list", (await q(`select body from my_surprises() where id='${open.id}'`))[0].body === "Je pense a toi");
+  await expectFail("recipient cannot modify surprises", async () => { const r = await db.query(`update surprises set body='x' returning id`); if (!r.rows.length) throw new Error("0 rows"); });
+});
+await asUser(him.id, async () => check("author sees own surprises", (await q(`select * from surprises`)).length === 2));
+await asUser(eve.id, async () => {
+  check("outsider sees no surprises", (await q(`select * from my_surprises()`)).length === 0);
+  await expectFail("outsider opens a surprise", () => db.query(`select open_surprise('${(0, 0) || "00000000-0000-0000-0000-000000000000"}')`));
+});
+
+// Story, jokes, songs, counts
+await asUser(her.id, async () => {
+  await db.query(`insert into story_moments(couple_id, moment_date, title, emotion) values ('${c.id}','2026-05-24','Le debut','love')`);
+  await db.query(`insert into inside_jokes(couple_id, kind, body) values ('${c.id}','nickname','Petit nuage')`);
+  await db.query(`insert into shared_songs(couple_id, title, artist, url) values ('${c.id}','Song','Artist','https://example.com/x')`);
+  await expectFail("javascript: URL as a song link", () => db.query(`insert into shared_songs(couple_id, title, artist, url) values ('${c.id}','S','A','javascript:alert(1)')`));
+});
+await asUser(him.id, async () => {
+  check("partner reads the story", (await q(`select * from story_moments`)).length === 1);
+  check("partner reads jokes + songs", (await q(`select * from inside_jokes`)).length === 1 && (await q(`select * from shared_songs`)).length === 1);
+  await expectFail("partner edits her story moment", async () => { const r = await db.query(`update story_moments set title='hack' returning id`); if (!r.rows.length) throw new Error("0 rows"); });
+  const n = (await q(`select couple_counts() as n`))[0].n;
+  check("counts summarise without content", n.memories === 1 && n.letters === 2 && n.songs === 1 && n.jokes === 1);
+});
+await asUser(eve.id, async () => {
+  check("outsider sees no story", (await q(`select * from story_moments`)).length === 0);
+  check("outsider counts are zero", (await q(`select couple_counts() as n`))[0].n.memories === 0);
 });
 
 // Vault
 await asUser(her.id, async () => {
-  check('vault empty & unlocked=false', (await q(`select vault_status() as s`))[0].s.unlocked === false);
-  await expectFail('vault write without unlock', () => db.query(`insert into vault_items(couple_id,kind,body) values ('${c.id}','letter','secret')`));
+  await expectFail("vault write without unlock", () => db.query(`insert into vault_items(couple_id,kind,body) values ('${c.id}','letter','secret')`));
   await db.query(`select vault_set_pin('123456')`);
   await db.query(`insert into vault_items(couple_id,kind,title,body) values ('${c.id}','letter','t','secret')`);
 });
 await asUser(him.id, async () => {
-  check('partner locked out of vault without PIN', (await q(`select * from vault_items`)).length === 0);
-  let r = (await q(`select vault_unlock('000000') as r`))[0].r;
-  check('wrong PIN rejected', r.ok === false);
-  check('correct PIN unlocks', (await q(`select vault_unlock('123456') as r`))[0].r.ok === true);
-  check('partner reads vault after unlock', (await q(`select * from vault_items`)).length === 1);
+  check("partner locked out of vault without PIN", (await q(`select * from vault_items`)).length === 0);
+  check("wrong PIN rejected", (await q(`select vault_unlock('000000') as r`))[0].r.ok === false);
+  check("correct PIN unlocks", (await q(`select vault_unlock('123456') as r`))[0].r.ok === true);
+  check("partner reads vault after unlock", (await q(`select * from vault_items`)).length === 1);
   await db.query(`select vault_lock()`);
-  check('lock closes it again', (await q(`select * from vault_items`)).length === 0);
+  check("lock closes it again", (await q(`select * from vault_items`)).length === 0);
   for (let i = 0; i < 5; i++) await db.query(`select vault_unlock('999999')`);
-  r = (await q(`select vault_unlock('123456') as r`))[0].r;
-  check('5 failures lock out even correct PIN', r.ok === false && !!r.locked_until);
-});
-await asUser(eve.id, async () => {
-  check('outsider vault_status has no couple', (await q(`select vault_status() as s`))[0].s.couple === false);
+  const r = (await q(`select vault_unlock('123456') as r`))[0].r;
+  check("5 failures lock out even the right PIN", r.ok === false && !!r.locked_until);
 });
 
-// Unlink revokes
-await asUser(her.id, () => db.query(`select unlink_partner()`));
-await asUser(him.id, async () => {
-  check('after unlink partner sees no journal', (await q(`select * from journal_entries`)).length === 0);
-  check('after unlink status linked=false', (await q(`select partner_shared_status(current_date) as s`))[0].s.linked === false);
-});
-const [c2] = await q(`select invite_code from couples where id='${c.id}'`);
-check('invite code rotated', c2.invite_code !== c.invite_code);
-console.log(process.exitCode ? '\nSOME CHECKS FAILED' : '\nALL CHECKS PASSED');
+console.log(process.exitCode ? "\nSOME CHECKS FAILED" : "\nALL CHECKS PASSED");

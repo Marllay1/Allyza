@@ -8,6 +8,7 @@ import { formatDateTime } from "@/lib/format";
 import { prepareImage, isAcceptedImage } from "@/lib/image";
 import { useSignedUrls } from "@/lib/use-signed-urls";
 import { ErrorNote, Notice } from "@/components/Feedback";
+import { AppIcon } from "@/components/icons";
 import type { ErrCode } from "@/lib/action-utils";
 
 export type VaultItem = { id: string; author_id: string; kind: "letter" | "note" | "photo"; title: string; body: string | null; storage_path: string | null; created_at: string };
@@ -75,7 +76,7 @@ export function VaultClient({ state, items, coupleId, myId, names }: { state: Va
   if (!state.unlocked) {
     return (
       <form className="card p-6 grid gap-4 text-center" onSubmit={(e) => { e.preventDefault(); run(() => vaultUnlockAction(pin), () => setPin("")); }}>
-        <div className="text-4xl" aria-hidden>🗝️</div>
+        <div className="mx-auto grid place-items-center size-16 rounded-full bg-accent/15 text-accent"><AppIcon name="key" size={30} /></div>
         <h2 className="text-2xl">{t("vault.lockedTitle")}</h2>
         {lockedUntil && <Notice tone="care">{t("vault.lockedOut", { time: new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(lockedUntil) })}</Notice>}
         <PinField label={t("vault.enterPin")} value={pin} onChange={setPin} />
@@ -103,10 +104,10 @@ export function VaultClient({ state, items, coupleId, myId, names }: { state: Va
   return (
     <div className="grid gap-5">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm text-good">🔓 {t("vault.open")}</span>
+        <span className="text-sm text-good inline-flex items-center gap-1.5"><AppIcon name="unlock" size={16} /> {t("vault.open")}</span>
         <div className="flex gap-2">
           <button className="btn !min-h-10 text-sm" onClick={() => setChanging((c) => !c)}>{t("vault.changePin")}</button>
-          <button className="btn !min-h-10 text-sm" disabled={pending} onClick={() => run(() => vaultLockAction())}>🔒 {t("vault.lockNow")}</button>
+          <button className="btn !min-h-10 text-sm" disabled={pending} onClick={() => run(() => vaultLockAction())}><AppIcon name="lock" size={15} /> {t("vault.lockNow")}</button>
         </div>
       </div>
 
@@ -127,7 +128,7 @@ export function VaultClient({ state, items, coupleId, myId, names }: { state: Va
         <input className="field" maxLength={120} placeholder={t("vault.titlePlaceholder")} value={title} onChange={(e) => setTitle(e.target.value)} />
         {kind === "photo" ? (
           <label className="btn cursor-pointer">
-            {file ? file.name : `📷 ${t("memories.add")}`}
+            {file ? file.name : <><AppIcon name="camera" size={18} /> {t("memories.add")}</>}
             <input type="file" accept="image/*" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] && isAcceptedImage(e.target.files[0]) ? e.target.files[0] : null)} />
           </label>
         ) : (

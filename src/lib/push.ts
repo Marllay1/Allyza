@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/action-utils";
 
-export type PushKind = "journal" | "media" | "refuge" | "little";
+export type PushKind = "journal" | "media" | "refuge" | "little" | "surprise";
 
 /**
  * Sends the OTHER member of my couple a contentless "something new" ping.
@@ -28,7 +28,7 @@ export async function pingPartner(kind: PushKind) {
     const target = couple.her_id === auth.user.id ? couple.partner_id : couple.her_id;
     if (!target) return;
 
-    const prefKey = { journal: "notify_journal", media: "notify_media", refuge: "notify_refuge", little: "notify_little" }[kind];
+    const prefKey = { journal: "notify_journal", media: "notify_media", refuge: "notify_refuge", little: "notify_little", surprise: "notify_surprise" }[kind];
     const { data: prefs } = await admin.from("user_preferences").select("*").eq("user_id", target).maybeSingle();
     if (!prefs || prefs[prefKey] === false) return;
 

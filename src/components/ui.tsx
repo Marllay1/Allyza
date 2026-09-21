@@ -1,31 +1,16 @@
 import Link from "next/link";
+import { AppIcon, type IconName } from "@/components/icons";
 
-export function PageHeader({
-  title,
-  subtitle,
-  back,
-  backLabel,
-}: {
-  title: string;
-  subtitle?: string;
-  back?: string;
-  backLabel?: string;
-}) {
+export function PageHeader({ title, subtitle, back, backLabel }: { title: string; subtitle?: string; back?: string; backLabel?: string }) {
   return (
-    <div className="mb-5 rise">
+    <div className="mb-6 rise">
       {back && (
-        <Link
-          href={back}
-          aria-label={backLabel}
-          className="inline-flex items-center justify-center size-10 -ml-2 mb-1 rounded-full text-muted hover:text-ink hover:bg-surface2 transition"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
+        <Link href={back} aria-label={backLabel} className="icon-btn -ml-2 mb-1 text-muted hover:text-ink">
+          <AppIcon name="back" size={22} />
         </Link>
       )}
-      <h1 className="text-4xl">{title}</h1>
-      {subtitle && <p className="text-muted mt-1 text-balance">{subtitle}</p>}
+      <h1 className="text-[2.6rem] leading-[1.05]">{title}</h1>
+      {subtitle && <p className="text-muted mt-2 text-balance">{subtitle}</p>}
     </div>
   );
 }
@@ -44,32 +29,46 @@ export function Section({ title, children, aside }: { title?: string; children: 
   );
 }
 
-export function Stat({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
+export function Stat({ label, value, hint, icon }: { label: string; value: React.ReactNode; hint?: string; icon?: IconName }) {
   return (
-    <div className="rounded-2xl bg-surface2/70 border border-line p-3.5">
-      <div className="eyebrow">{label}</div>
-      <div className="font-display text-3xl mt-1 leading-none">{value}</div>
-      {hint && <div className="text-xs text-muted mt-1.5">{hint}</div>}
+    <div className="rounded-3xl bg-surface2/70 border border-line p-4">
+      <div className="eyebrow flex items-center gap-1.5">{icon && <AppIcon name={icon} size={13} />}{label}</div>
+      <div className="font-display text-3xl mt-1.5 leading-none">{value}</div>
+      {hint && <div className="text-xs text-muted mt-2">{hint}</div>}
     </div>
   );
 }
 
-export function TileLink({ href, icon, title, text, badge }: { href: string; icon: string; title: string; text?: string; badge?: boolean }) {
+/** Round icon badge used at the start of tiles and cards. */
+export function IconBadge({ name, tone = "accent", size = 22 }: { name: IconName; tone?: "accent" | "rose" | "mauve" | "gold"; size?: number }) {
+  const tones = { accent: "var(--accent)", rose: "var(--rose)", mauve: "var(--mauve)", gold: "var(--gold)" };
   return (
-    <Link href={href} className="card p-4 flex items-center gap-4 hover:translate-y-[-2px] transition relative">
-      <span className="text-2xl w-10 text-center" aria-hidden>{icon}</span>
-      <span className="flex-1">
-        <span className="block font-display text-xl">{title}</span>
+    <span className="grid place-items-center size-11 rounded-2xl shrink-0" style={{ background: `color-mix(in srgb, ${tones[tone]} 16%, transparent)`, color: tones[tone] }}>
+      <AppIcon name={name} size={size} />
+    </span>
+  );
+}
+
+export function TileLink({ href, icon, title, text, badge, tone, right }: { href: string; icon: IconName; title: string; text?: string; badge?: boolean; tone?: "accent" | "rose" | "mauve" | "gold"; right?: React.ReactNode }) {
+  return (
+    <Link href={href} className="card p-4 flex items-center gap-4 transition duration-300 hover:-translate-y-0.5 active:scale-[0.985] relative">
+      <IconBadge name={icon} tone={tone} />
+      <span className="flex-1 min-w-0">
+        <span className="block font-display text-xl leading-tight">{title}</span>
         {text && <span className="block text-sm text-muted">{text}</span>}
       </span>
-      {badge && <span className="size-2.5 rounded-full bg-rose" aria-hidden />}
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted" aria-hidden>
-        <path d="M9 6l6 6-6 6" />
-      </svg>
+      {badge && <span className="size-2.5 rounded-full bg-rose" role="status" />}
+      {right}
+      <AppIcon name="forward" size={18} className="text-muted" />
     </Link>
   );
 }
 
-export function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="text-muted text-sm text-center py-6 text-balance">{children}</p>;
+export function Empty({ children, icon }: { children: React.ReactNode; icon?: IconName }) {
+  return (
+    <div className="text-muted text-sm text-center py-8 grid justify-items-center gap-3">
+      {icon && <AppIcon name={icon} size={28} className="opacity-60" />}
+      <p className="text-balance max-w-xs">{children}</p>
+    </div>
+  );
 }

@@ -12,4 +12,3 @@ export const formatDay = (iso: string, locale: Locale, opts: Intl.DateTimeFormat
 export const formatDateTime = (isoTs: string, locale: Locale) =>
   new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(isoTs));
 
-export const MOOD_EMOJI = ["😞", "🙁", "😐", "🙂", "😊"] as const;

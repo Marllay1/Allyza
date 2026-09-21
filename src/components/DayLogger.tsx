@@ -5,7 +5,8 @@ import { saveDayLogAction, type DayLogInput } from "@/actions/cycle";
 import { useI18n } from "@/lib/i18n/provider";
 import { PAIN_TYPES, SYMPTOMS } from "@/lib/constants";
 import { addDays, toISODate, type DailyLog } from "@/lib/cycle";
-import { MOOD_EMOJI, formatDay } from "@/lib/format";
+import { formatDay } from "@/lib/format";
+import { AppIcon } from "@/components/icons";
 import { ErrorNote, Notice } from "@/components/Feedback";
 import type { ErrCode } from "@/lib/action-utils";
 
@@ -70,12 +71,12 @@ export function DayLogger({ logs, sections }: { logs: DailyLog[]; sections: Sect
   return (
     <div className="grid gap-5">
       <div className="flex items-center gap-2">
-        <button type="button" className="btn btn-ghost !px-3" aria-label={t("common.previousDay")} onClick={() => changeDate(addDays(date, -1))}>‹</button>
+        <button type="button" className="btn btn-ghost !px-3" aria-label={t("common.previousDay")} onClick={() => changeDate(addDays(date, -1))}><AppIcon name="back" size={20} /></button>
         <label className="flex-1">
           <span className="sr-only">{t("common.date")}</span>
           <input type="date" className="field text-center" value={date} max={today} onChange={(e) => e.target.value && changeDate(e.target.value)} />
         </label>
-        <button type="button" className="btn btn-ghost !px-3" aria-label={t("common.nextDay")} disabled={date >= today} onClick={() => changeDate(addDays(date, 1))}>›</button>
+        <button type="button" className="btn btn-ghost !px-3" aria-label={t("common.nextDay")} disabled={date >= today} onClick={() => changeDate(addDays(date, 1))}><AppIcon name="forward" size={20} /></button>
       </div>
       <p className="text-center text-sm text-muted -mt-3">{date === today ? t("common.today") : formatDay(date, locale, { weekday: "long", day: "numeric", month: "long" })}</p>
 
@@ -84,7 +85,7 @@ export function DayLogger({ logs, sections }: { logs: DailyLog[]; sections: Sect
           <div>
             <span className="label">{t("cycle.periodToday")}</span>
             <div className="flex gap-2" role="group">
-              <button type="button" className="chip" aria-pressed={form.is_period} onClick={() => set("is_period", true)}>🩸 {t("common.yes")}</button>
+              <button type="button" className="chip" aria-pressed={form.is_period} onClick={() => set("is_period", true)}><AppIcon name="drop" size={16} /> {t("common.yes")}</button>
               <button type="button" className="chip" aria-pressed={!form.is_period} onClick={() => { set("is_period", false); set("flow", null); }}>{t("common.no")}</button>
             </div>
           </div>
@@ -94,7 +95,7 @@ export function DayLogger({ logs, sections }: { logs: DailyLog[]; sections: Sect
               <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t("cycle.flow")}>
                 {[1, 2, 3, 4].map((f) => (
                   <button key={f} type="button" role="radio" aria-checked={form.flow === f} className="chip" onClick={() => set("flow", f)}>
-                    {"💧".repeat(f)} {t(`cycle.flowLevel.${f as 1 | 2 | 3 | 4}`)}
+                    <span className="inline-flex">{Array.from({ length: f }, (_, k) => <AppIcon key={k} name="drop" size={13} />)}</span> {t(`cycle.flowLevel.${f as 1 | 2 | 3 | 4}`)}
                   </button>
                 ))}
               </div>
@@ -111,7 +112,7 @@ export function DayLogger({ logs, sections }: { logs: DailyLog[]; sections: Sect
               {[1, 2, 3, 4, 5].map((m) => (
                 <button key={m} type="button" role="radio" aria-checked={form.mood === m} onClick={() => set("mood", form.mood === m ? null : m)}
                   className="chip !flex-col !min-h-16 !rounded-2xl !justify-center !px-1 text-center">
-                  <span className="text-2xl leading-none" aria-hidden>{MOOD_EMOJI[m - 1]}</span>
+                  <AppIcon name={`mood${m}` as "mood1"} size={26} />
                   <span className="text-[0.68rem] leading-tight">{t(`wellbeing.moodLevel.${m as 1 | 2 | 3 | 4 | 5}`)}</span>
                 </button>
               ))}
@@ -167,7 +168,7 @@ export function DayLogger({ logs, sections }: { logs: DailyLog[]; sections: Sect
       <ErrorNote code={error} />
       <div className="flex items-center gap-3">
         <button type="button" className="btn btn-primary flex-1" onClick={save} disabled={pending}>{pending ? t("common.loading") : t("common.save")}</button>
-        {saved && <span role="status" className="text-good text-sm">✓ {t("common.saved")}</span>}
+        {saved && <span role="status" className="text-good text-sm"><AppIcon name="check" size={16} className="inline" /> {t("common.saved")}</span>}
       </div>
     </div>
   );

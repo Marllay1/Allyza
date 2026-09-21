@@ -8,7 +8,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const viewer = await requireViewer();
   const supabase = await createClient();
   const { data } = await supabase.from("notifications").select("kind").is("read_at", null).limit(200);
-  const unread: Unread = { journal: 0, media: 0, refuge: 0, little: 0 };
+  const unread: Unread = { journal: 0, media: 0, refuge: 0, little: 0, surprise: 0 };
   for (const n of data ?? []) unread[n.kind as keyof Unread]++;
 
   return (

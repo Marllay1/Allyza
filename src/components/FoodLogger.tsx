@@ -6,12 +6,9 @@ import { useI18n } from "@/lib/i18n/provider";
 import { FOOD_CATEGORIES } from "@/lib/constants";
 import { toISODate, type DailyLog, type FoodLog } from "@/lib/cycle";
 import { ErrorNote } from "@/components/Feedback";
+import { AppIcon } from "@/components/icons";
 import type { ErrCode } from "@/lib/action-utils";
 
-const ICON: Record<string, string> = {
-  fruit: "🍓", vegetables: "🥦", protein: "🍗", legumes: "🫘", whole_grains: "🌾",
-  water: "💧", sweet_foods: "🍰", sugary_drinks: "🥤", other: "🍽️",
-};
 
 export function FoodLogger({ food, logs }: { food: FoodLog[]; logs: DailyLog[] }) {
   const { t } = useI18n();
@@ -58,7 +55,7 @@ export function FoodLogger({ food, logs }: { food: FoodLog[]; logs: DailyLog[] }
           {FOOD_CATEGORIES.map((c) => (
             <button key={c} type="button" disabled={pending} className="chip !flex-col !rounded-2xl !min-h-20 !justify-center text-center"
               onClick={() => run(() => addFoodAction({ date: today, category: c }))}>
-              <span className="text-2xl" aria-hidden>{ICON[c]}</span>
+              <AppIcon name={c} size={26} />
               <span className="text-xs leading-tight">{t(`food.cat.${c}`)}</span>
             </button>
           ))}
@@ -89,7 +86,7 @@ export function FoodLogger({ food, logs }: { food: FoodLog[]; logs: DailyLog[] }
               <li key={f.id}>
                 <button className="chip" aria-label={`${t("common.delete")} ${t(`food.cat.${f.category as (typeof FOOD_CATEGORIES)[number]}`)}`}
                   onClick={() => run(() => deleteFoodAction(f.id))}>
-                  {ICON[f.category]} {t(`food.cat.${f.category as (typeof FOOD_CATEGORIES)[number]}`)} <span className="text-muted">✕</span>
+                  <AppIcon name={f.category as (typeof FOOD_CATEGORIES)[number]} size={16} /> {t(`food.cat.${f.category as (typeof FOOD_CATEGORIES)[number]}`)} <AppIcon name="close" size={14} className="text-muted" />
                 </button>
               </li>
             ))}

@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
 import { useT } from "@/lib/i18n/provider";
+import { AppIcon } from "@/components/icons";
 import { REACTION_EMOJIS } from "@/lib/constants";
-import type { Reaction } from "@/lib/use-reactions";
+import type { Reaction, ReactionTarget } from "@/lib/use-reactions";
 
 export function ReactionBar({
   targetType,
@@ -11,11 +12,11 @@ export function ReactionBar({
   myId,
   toggle,
 }: {
-  targetType: "journal" | "media" | "little";
+  targetType: ReactionTarget;
   targetId: string;
   reactions: Reaction[];
   myId: string;
-  toggle: (type: "journal" | "media" | "little", id: string, emoji: string) => void;
+  toggle: (type: ReactionTarget, id: string, emoji: string) => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -34,7 +35,7 @@ export function ReactionBar({
         </button>
       ))}
       <button type="button" className="chip !min-h-8 !px-2.5 !text-sm" aria-expanded={open} aria-label={t("couple.react")} onClick={() => setOpen((o) => !o)}>
-        {open ? "✕" : "＋"}
+        <AppIcon name={open ? "close" : "plus"} size={15} />
       </button>
       {open &&
         REACTION_EMOJIS.map((e) => (

@@ -1,20 +1,20 @@
 import Link from "next/link";
-import { DeleteAccount, PasswordForm, SignOutButton } from "@/components/SettingsForms";
+import { AppIcon } from "@/components/icons";
+import { PasswordForm, SignOutButton } from "@/components/SettingsForms";
 import { PageHeader, Section } from "@/components/ui";
 import { getT } from "@/lib/i18n/server";
 import { requireViewer } from "@/lib/session";
-import { createClient } from "@/lib/supabase/server";
 
+/** Security: password + logout (+ export of her own data). There is deliberately no way to delete the account here. */
 export default async function AccountPage() {
   const v = await requireViewer();
   const { t } = await getT();
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
   return (
     <>
-      <PageHeader title={t("settings.account")} back="/settings" backLabel={t("common.back")} />
+      <PageHeader title={t("settings.security")} back="/settings" backLabel={t("common.back")} />
       <Section title={t("account.signedInAs")}>
-        <p className="break-all">{data.user?.email}</p>
+        <p className="font-display text-2xl">{v.displayName}</p>
+        <p className="text-sm text-muted mt-1">{t("account.sessionNote")}</p>
         <div className="mt-4"><SignOutButton /></div>
       </Section>
       <Section title={t("account.security")}>
@@ -23,12 +23,11 @@ export default async function AccountPage() {
       {v.role === "her" && (
         <Section title={t("account.yourData")}>
           <p className="text-sm text-muted mb-3">{t("account.exportBody")}</p>
-          <Link href="/api/export" prefetch={false} className="btn w-full" download>⬇ {t("account.export")}</Link>
+          <Link href="/api/export" prefetch={false} className="btn w-full" download>
+            <AppIcon name="download" size={18} /> {t("account.export")}
+          </Link>
         </Section>
       )}
-      <Section title={t("account.dangerZone")}>
-        <DeleteAccount isHer={v.role === "her"} />
-      </Section>
     </>
   );
 }

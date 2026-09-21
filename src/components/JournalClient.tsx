@@ -9,6 +9,7 @@ import { useSignedUrls } from "@/lib/use-signed-urls";
 import { useReactions, type Reaction } from "@/lib/use-reactions";
 import { ReactionBar } from "@/components/ReactionBar";
 import { ErrorNote } from "@/components/Feedback";
+import { AppIcon } from "@/components/icons";
 import { useUnread } from "@/components/AppShell";
 import type { ErrCode } from "@/lib/action-utils";
 
@@ -170,7 +171,13 @@ export function JournalClient({ coupleId, myId, herId, names, initialEntries, in
   return (
     <div className="flex flex-col">
       <div className="grid gap-6 pb-4">
-        {entries.length === 0 && <p className="text-center text-muted py-10 text-balance">{t("journal.empty")}</p>}
+        {entries.length === 0 && (
+          <div className="text-center py-10 grid justify-items-center gap-2">
+            <AppIcon name="journal" size={30} className="text-muted opacity-60" />
+            <p className="font-display text-2xl">{t("journal.emptyTitle")}</p>
+            <p className="text-muted text-balance max-w-xs">{t("journal.emptyBody")}</p>
+          </div>
+        )}
         {days.map(({ day, items }) => (
           <div key={day} className="grid gap-3">
             <div className="eyebrow text-center">{formatDay(day, locale, { weekday: "long", day: "numeric", month: "long" })}</div>
@@ -226,7 +233,8 @@ export function JournalClient({ coupleId, myId, herId, names, initialEntries, in
           </div>
         ))}
         {typing && (
-          <p className="text-sm text-muted italic px-2" role="status" aria-live="polite">
+          <p className="text-sm text-muted italic px-2 inline-flex items-center gap-2" role="status" aria-live="polite">
+            <span aria-hidden className="inline-flex gap-1"><i className="typing-dot" /><i className="typing-dot" /><i className="typing-dot" /></span>
             {otherIsHer ? t("journal.typingHer") : t("journal.typingHim")}
           </p>
         )}
@@ -241,7 +249,7 @@ export function JournalClient({ coupleId, myId, herId, names, initialEntries, in
               <div key={src} className="relative shrink-0">
                 { }
                 <img src={src} alt="" className="size-16 rounded-xl object-cover" />
-                <button type="button" aria-label={t("common.delete")} className="absolute -top-1.5 -right-1.5 size-6 rounded-full bg-surface border border-line text-xs" onClick={() => setFiles((f) => f.filter((_, k) => k !== i))}>✕</button>
+                <button type="button" aria-label={t("common.delete")} className="absolute -top-1.5 -right-1.5 size-6 grid place-items-center rounded-full bg-surface border border-line" onClick={() => setFiles((f) => f.filter((_, k) => k !== i))}><AppIcon name="close" size={12} /></button>
               </div>
             ))}
           </div>
@@ -253,7 +261,7 @@ export function JournalClient({ coupleId, myId, herId, names, initialEntries, in
         </div>
         <div className="flex items-end gap-2">
           <label className="btn !px-3 shrink-0 cursor-pointer" aria-label={t("journal.addPhoto")}>
-            📷
+            <AppIcon name="camera" size={20} />
             <input type="file" accept="image/*" multiple className="sr-only"
               onChange={(ev) => { const list = Array.from(ev.target.files ?? []).filter(isAcceptedImage); setFiles((f) => [...f, ...list].slice(0, 4)); ev.target.value = ""; }} />
           </label>
@@ -263,7 +271,7 @@ export function JournalClient({ coupleId, myId, herId, names, initialEntries, in
             onChange={(ev) => onType(ev.target.value)}
             onKeyDown={(ev) => { if (ev.key === "Enter" && !ev.shiftKey && !("ontouchstart" in window)) { ev.preventDefault(); send(); } }}
           />
-          <button type="button" className="btn btn-primary !px-4 shrink-0" onClick={send} disabled={busy || !text.trim()} aria-label={t("common.send")}>➤</button>
+          <button type="button" className="btn btn-primary !px-4 shrink-0" onClick={send} disabled={busy || !text.trim()} aria-label={t("common.send")}><AppIcon name="send" size={20} /></button>
         </div>
       </div>
     </div>

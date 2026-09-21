@@ -1,23 +1,20 @@
 "use client";
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { useT } from "@/lib/i18n/provider";
-import { toISODate } from "@/lib/cycle";
-import { Section, TileLink } from "@/components/ui";
+import { AppIcon } from "@/components/icons";
 import { ClientOnly } from "@/components/ClientOnly";
+import { useUnread } from "@/components/AppShell";
+import { Section, TileLink } from "@/components/ui";
+import { Greeting } from "@/features/home/Greeting";
+import { toISODate } from "@/lib/cycle";
+import { useT } from "@/lib/i18n/provider";
+import { startNight } from "@/lib/local-pref";
+import { createClient } from "@/lib/supabase/client";
 
 type Band = "low" | "medium" | "high" | null;
 type Status = {
-  linked: boolean;
-  cycle_day: number | null;
-  on_period: boolean | null;
-  pain: Band;
-  fatigue: Band;
-  mood: "low" | "neutral" | "good" | null;
-  wellbeing: "gentle" | "ok" | "good" | null;
-  sugar: "low" | "moderate" | "high" | null;
-  avg_cycle: number | null;
+  linked: boolean; cycle_day: number | null; on_period: boolean | null; pain: Band; fatigue: Band;
+  mood: "low" | "neutral" | "good" | null; wellbeing: "gentle" | "ok" | "good" | null;
+  sugar: "low" | "moderate" | "high" | null; avg_cycle: number | null;
 };
 
 function StatusCard({ name }: { name: string }) {
@@ -35,11 +32,7 @@ function StatusCard({ name }: { name: string }) {
     const id = setInterval(load, 60_000);
     const onVis = () => document.visibilityState === "visible" && load();
     document.addEventListener("visibilitychange", onVis);
-    return () => {
-      alive = false;
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", onVis);
-    };
+    return () => { alive = false; clearInterval(id); document.removeEventListener("visibilitychange", onVis); };
   }, []);
 
   if (!s) return <p className="text-sm text-muted">{t("common.loading")}</p>;
@@ -69,39 +62,40 @@ function StatusCard({ name }: { name: string }) {
   }
   return (
     <div className="grid gap-3">
-      {lines.map((l) => (
-        <p key={l} className="font-display text-2xl leading-snug">{l}</p>
-      ))}
+      {lines.map((l) => <p key={l} className="font-display text-2xl leading-snug">{l}</p>)}
       {soft && <p className="text-muted">{t("partner.suggestion")}</p>}
       {facts.length > 0 && (
         <ul className="flex flex-wrap gap-2 pt-1">
-          {facts.map((f) => (
-            <li key={f} className="chip !cursor-default">{f}</li>
-          ))}
+          {facts.map((f) => <li key={f} className="chip !cursor-default">{f}</li>)}
         </ul>
       )}
     </div>
   );
 }
 
-export function PartnerHome({ herName }: { herName: string }) {
+export function PartnerHome({ myName, herName }: { myName: string; herName: string }) {
   const t = useT();
+  const { unread } = useUnread();
+  const fromHer = unread.journal + unread.media + unread.little + unread.surprise + unread.refuge;
   return (
     <>
-      <div className="mb-5 rise">
-        <p className="eyebrow">{t("partner.eyebrow")}</p>
-        <h1 className="text-4xl">{herName}</h1>
-      </div>
-      <Section title={t("partner.today")}>
+      <ClientOnly><Greeting name={myName} /></ClientOnly>
+
+      <Section title={t("partner.today", { name: herName })}>
         <ClientOnly fallback={<p className="text-sm text-muted">{t("common.loading")}</p>}>
           <StatusCard name={herName} />
         </ClientOnly>
-        <p className="text-xs text-muted mt-4">{t("partner.onlyShared", { name: herName })}</p>
+        <p className="text-xs text-muted mt-4 inline-flex items-center gap-1.5"><AppIcon name="lock" size={13} /> {t("partner.onlyShared", { name: herName })}</p>
       </Section>
+
       <div className="grid gap-3">
-        <TileLink href="/refuge/messages" icon="💌" title={t("partner.sendMessage")} text={t("partner.sendMessageText")} />
-        <TileLink href="/us/journal" icon="📖" title={t("couple.journal")} text={t("partner.journalText")} />
-        <Link href="/us" className="btn mt-1">{t("nav.us")}</Link>
+        <TileLink href="/us/surprises" icon="surprise" tone="gold" title={t("partner.leaveSurprise")} text={fromHer > 0 ? t("home.usLeft", { name: herName }) : t("partner.leaveSurpriseText")} />
+        <TileLink href="/refuge/messages" icon="mail" tone="rose" title={t("partner.sendMessage")} text={t("partner.sendMessageText")} />
+        <TileLink href="/us/journal" icon="journal" tone="mauve" title={t("couple.journal")} text={t("partner.journalText")} />
+        <TileLink href="/us" icon="us" tone="accent" title={t("nav.us")} text={t("home.usCard")} />
+      </div>
+      <div className="flex justify-center pt-5">
+        <button className="btn btn-ghost text-sm" onClick={startNight}><AppIcon name="night" size={16} /> {t("night.start")}</button>
       </div>
     </>
   );

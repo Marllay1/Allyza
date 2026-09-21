@@ -6,6 +6,7 @@ import { deleteRefugeMessageAction, openRefugeMessageAction, sendRefugeMessageAc
 import { useI18n } from "@/lib/i18n/provider";
 import { formatDateTime } from "@/lib/format";
 import { ErrorNote } from "@/components/Feedback";
+import { AppIcon } from "@/components/icons";
 import { useUnread } from "@/components/AppShell";
 import type { ErrCode } from "@/lib/action-utils";
 
@@ -38,7 +39,7 @@ export function MessagesClient({ coupleId, myId, msgs, names, canSend }: { coupl
           <ErrorNote code={error} />
           <button className="btn btn-primary" disabled={pending || !body.trim()}
             onClick={() => start(async () => { setError(null); const r = await sendRefugeMessageAction({ body }); if (r.ok) { setBody(""); router.refresh(); } else setError(r.error); })}>
-            💌 {t("common.send")}
+            <AppIcon name="send" size={18} /> {t("common.send")}
           </button>
         </section>
       )}
@@ -52,7 +53,7 @@ export function MessagesClient({ coupleId, myId, msgs, names, canSend }: { coupl
               <div className="text-xs text-muted mb-2">{mine ? t("common.you") : names.other} · {formatDateTime(m.created_at, locale)}</div>
               {sealed ? (
                 <button className="btn btn-primary w-full !min-h-16 text-lg" onClick={() => { setRevealed((s) => new Set(s).add(m.id)); openRefugeMessageAction(m.id); markRead(["refuge"]); }}>
-                  💌 {t("refuge.openMessage")}
+                  <AppIcon name="mail" size={22} /> {t("refuge.openMessage")}
                 </button>
               ) : (
                 <p className="font-display text-2xl leading-snug whitespace-pre-wrap break-words rise">{m.body}</p>

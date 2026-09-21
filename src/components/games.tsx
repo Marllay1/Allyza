@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/lib/i18n/provider";
 import type { GameId } from "@/lib/games";
+import { AppIcon, type IconName } from "@/components/icons";
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 
@@ -13,7 +14,7 @@ function Petals() {
   const id = useRef(0);
   useEffect(() => {
     const iv = setInterval(() => {
-      setItems((cur) => [...cur.slice(-18), { id: id.current++, x: rand(4, 92), s: rand(26, 44), d: rand(7, 12), c: ["🌸", "🌷", "🌺", "🪷"][Math.floor(rand(0, 4))] }]);
+      setItems((cur) => [...cur.slice(-18), { id: id.current++, x: rand(4, 92), s: rand(26, 44), d: rand(7, 12), c: ["var(--rose)", "var(--mauve)", "var(--gold)", "var(--accent)"][Math.floor(rand(0, 4))] }]);
     }, 1100);
     return () => clearInterval(iv);
   }, []);
@@ -21,7 +22,7 @@ function Petals() {
     <div className="relative h-[60dvh] overflow-hidden rounded-3xl border border-line bg-gradient-to-b from-surface2 to-transparent touch-manipulation select-none">
       {items.map((p) => (
         <button key={p.id} aria-label={t("games.petal")} onClick={() => { setItems((c) => c.filter((x) => x.id !== p.id)); setCaught((n) => n + 1); }}
-          className="absolute top-0" style={{ left: `${p.x}%`, fontSize: p.s, animation: `drift ${p.d}s linear forwards` }}>{p.c}</button>
+          className="absolute top-0" style={{ left: `${p.x}%`, color: p.c, animation: `drift ${p.d}s linear forwards` }}><AppIcon name="petals" size={Math.round(p.s)} /></button>
       ))}
       <p className="absolute bottom-3 inset-x-0 text-center text-sm text-muted">{t("games.petalsCount", { n: caught })}</p>
     </div>
@@ -63,7 +64,7 @@ function Bubbles() {
 /* ── Memory cards: no timer, no move counter ── */
 function Memory() {
   const t = useT();
-  const faces = ["🌙", "🌷", "🕊️", "🍓", "⭐", "🫖"];
+  const faces: IconName[] = ["moon", "her", "tender", "us", "star", "sun"];
   const make = useCallback(() => [...faces, ...faces].map((f, i) => ({ i, f })).sort(() => Math.random() - 0.5), []); // eslint-disable-line react-hooks/exhaustive-deps
   const [deck, setDeck] = useState(make);
   const [open, setOpen] = useState<number[]>([]);
@@ -85,9 +86,9 @@ function Memory() {
         {deck.map((c, idx) => {
           const shown = open.includes(idx) || found.includes(c.f);
           return (
-            <button key={c.i} onClick={() => flip(idx)} aria-label={shown ? c.f : t("games.hiddenCard")}
-              className={`aspect-[3/4] rounded-2xl border text-3xl transition-all duration-300 ${shown ? "bg-surface2 border-accent/50" : "bg-accent/15 border-line"}`}>
-              {shown ? c.f : ""}
+            <button key={c.i} onClick={() => flip(idx)} aria-label={shown ? t("games.card") : t("games.hiddenCard")}
+              className={`aspect-[3/4] rounded-2xl border grid place-items-center transition-all duration-300 ${shown ? "bg-surface2 border-accent/50" : "bg-accent/15 border-line"}`}>
+              {shown ? <AppIcon name={c.f} size={30} className="text-accent" /> : null}
             </button>
           );
         })}
@@ -151,7 +152,7 @@ function Clouds() {
       {msgs.map((m, i) => (
         <button key={i} onClick={() => setShown((s) => ({ ...s, [i]: !s[i] }))} aria-expanded={!!shown[i]}
           className="card p-5 text-center transition min-h-24" style={{ marginLeft: `${(i % 3) * 8}%`, marginRight: `${((i + 1) % 3) * 8}%` }}>
-          {shown[i] ? <span className="font-display text-xl rise">{m}</span> : <span className="text-4xl" aria-label={t("games.cloud")}>☁️</span>}
+          {shown[i] ? <span className="font-display text-xl rise">{m}</span> : <AppIcon name="cloud" size={44} label={t("games.cloud")} className="mx-auto text-mauve" />}
         </button>
       ))}
     </div>
@@ -172,11 +173,11 @@ function Stars() {
       </svg>
       {stars.map((s) => (
         <button key={s.i} aria-label={t("games.star")} onClick={() => { setLit((l) => (l.includes(s.i) ? l : [...l, s.i])); setPos({ x: s.x, y: s.y }); }}
-          className={`absolute -translate-x-1/2 -translate-y-1/2 ${lit.includes(s.i) ? "" : "twinkle"}`} style={{ left: `${s.x}%`, top: `${s.y}%`, fontSize: s.s, color: lit.includes(s.i) ? "#f6e7c8" : "#a98cc0", animationDelay: `${s.i * 0.2}s` }}>
-          {lit.includes(s.i) ? "★" : "✦"}
+          className={`absolute -translate-x-1/2 -translate-y-1/2 ${lit.includes(s.i) ? "" : "twinkle"}`} style={{ left: `${s.x}%`, top: `${s.y}%`, color: lit.includes(s.i) ? "#f6e7c8" : "#a98cc0", animationDelay: `${s.i * 0.2}s` }}>
+          <AppIcon name="star" size={Math.round(s.s)} className={lit.includes(s.i) ? "fill-current" : ""} />
         </button>
       ))}
-      <span className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none transition-all duration-[1400ms] ease-out text-2xl" style={{ left: `${pos.x}%`, top: `${pos.y - 4}%` }} aria-hidden>🌙</span>
+      <span className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none transition-all duration-[1400ms] ease-out text-[#f7d3bc]" style={{ left: `${pos.x}%`, top: `${pos.y - 4}%` }} aria-hidden><AppIcon name="moon" size={26} className="fill-current" /></span>
       <p className="absolute bottom-3 inset-x-0 text-center text-xs text-[#b9a5c4]">{t("games.starsHint")}</p>
     </div>
   );

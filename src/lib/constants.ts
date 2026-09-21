@@ -20,6 +20,12 @@ export type Sharing = {
   share_food: boolean;
   share_stats: boolean;
 };
+export const SURPRISE_KINDS = ["love", "encouragement", "funny", "memory", "compliment", "surprise"] as const;
+export const SURPRISE_UNLOCKS = ["anytime", "miss_me", "hard_day", "need_smile", "tonight", "tomorrow", "date"] as const;
+export const STORY_EMOTIONS = ["love", "joy", "laugh", "tender", "nostalgia", "wonder"] as const;
+export const JOKE_KINDS = ["joke", "nickname", "phrase", "quote", "moment"] as const;
+export const CHECKIN_STATES = ["good", "ok", "tired", "love"] as const;
+
 export const SHARING_KEYS = [
   "share_cycle_day", "share_period_status", "share_pain", "share_mood",
   "share_fatigue", "share_wellbeing", "share_food", "share_stats",

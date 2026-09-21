@@ -1,4 +1,4 @@
-import { Mark } from "@/components/Logo";
+import { AllyzaMark } from "@/components/icons";
 
 // Cached by the service worker at install. Both languages are in the markup and one
 // is revealed from the saved language cookie, so it needs no server when offline.
@@ -6,7 +6,7 @@ import { Mark } from "@/components/Logo";
 export default function Offline() {
   return (
     <main className="min-h-dvh flex flex-col items-center justify-center gap-4 px-6 text-center">
-      <Mark size={72} />
+      <AllyzaMark height={96} priority />
       <div data-l="fr" className="hidden">
         <h1 className="text-3xl">Tu es hors ligne</h1>
         <p className="text-muted mt-2">Ton espace est privé et n’est jamais gardé sur cet appareil. Reviens dès que la connexion est de retour.</p>

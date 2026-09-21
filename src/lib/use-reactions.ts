@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toggleReactionAction } from "@/actions/us";
 
+export type ReactionTarget = "journal" | "media" | "little" | "story" | "song" | "joke";
 export type Reaction = { id: string; target_type: string; target_id: string; emoji: string; author_id: string };
 
 /** Live reactions for a couple, with optimistic toggling. */
@@ -36,7 +37,7 @@ export function useReactions(coupleId: string, myId: string, initial: Reaction[]
   }, [coupleId]);
 
   const toggle = useCallback(
-    (targetType: "journal" | "media" | "little", targetId: string, emoji: string) => {
+    (targetType: ReactionTarget, targetId: string, emoji: string) => {
       setItems((cur) => {
         const mine = cur.find((r) => r.author_id === myId && r.target_id === targetId && r.emoji === emoji);
         return mine

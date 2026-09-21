@@ -122,8 +122,8 @@ export async function deleteMediaAction(id: string) {
 
 /* ───────── reactions ───────── */
 
-export async function toggleReactionAction(input: { targetType: "journal" | "media" | "little"; targetId: string; emoji: string }) {
-  const p = z.object({ targetType: z.enum(["journal", "media", "little"]), targetId: uuid, emoji: z.enum(REACTION_EMOJIS) }).safeParse(input);
+export async function toggleReactionAction(input: { targetType: "journal" | "media" | "little" | "story" | "song" | "joke"; targetId: string; emoji: string }) {
+  const p = z.object({ targetType: z.enum(["journal", "media", "little", "story", "song", "joke"]), targetId: uuid, emoji: z.enum(REACTION_EMOJIS) }).safeParse(input);
   if (!p.success) return fail("invalid");
   const c = await ctx();
   if (!c) return fail("auth");

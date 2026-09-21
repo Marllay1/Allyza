@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC = ["/", "/login", "/signup", "/forgot", "/auth", "/offline"];
+const PUBLIC = ["/", "/login", "/offline"];
 
 const isPublic = (path: string) =>
   PUBLIC.some((p) => path === p || (p !== "/" && path.startsWith(p + "/")));
@@ -35,7 +35,8 @@ export async function proxy(request: NextRequest) {
     url.search = "";
     return NextResponse.redirect(url);
   }
-  if (signedIn && (path === "/" || path === "/login" || path === "/signup")) {
+  // A device that already has a valid session never sees the welcome/login again (until an explicit logout).
+  if (signedIn && (path === "/" || path === "/login")) {
     const url = request.nextUrl.clone();
     url.pathname = "/home";
     return NextResponse.redirect(url);

@@ -12,10 +12,6 @@ export type ErrCode =
   | "not_found"
   | "wrong_pin"
   | "locked"
-  | "invalid_code"
-  | "already_linked"
-  | "not_partner"
-  | "email_taken"
   | "weak_password"
   | "credentials";
 

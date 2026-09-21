@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { fail, ok } from "@/lib/action-utils";
 
-const kinds = z.array(z.enum(["journal", "media", "refuge", "little"])).max(4);
+const kinds = z.array(z.enum(["journal", "media", "refuge", "little", "surprise"])).max(4);
 
 export async function markNotificationsReadAction(input: string[]) {
   const parsed = kinds.safeParse(input);
