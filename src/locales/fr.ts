@@ -609,7 +609,7 @@ export const fr = {
     card: "Carte",
   },
   atmosphere: {
-    subtitle: "Choisis un ou plusieurs sons et laisse-les te bercer.",
+    subtitle: "Choisis une ambiance et laisse-la te bercer.",
     sounds: {
       rain: "Pluie",
       ocean: "Océan",
@@ -626,6 +626,7 @@ export const fr = {
     stop: "Tout arrêter",
     note: "Les sons sont créés directement sur ton appareil. Ils s’arrêtent si tu quittes l’application.",
     lastTime: "Comme la dernière fois",
+    silentHint: "Pas de son ? Vérifie que ton téléphone n’est pas en mode silencieux et que le volume est monté, puis touche à nouveau.",
   },
   poetry: {
     poems: [

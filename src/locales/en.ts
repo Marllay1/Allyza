@@ -611,7 +611,7 @@ export const en: Dict = {
     card: "Card",
   },
   atmosphere: {
-    subtitle: "Pick one or several sounds and let them rock you.",
+    subtitle: "Pick an atmosphere and let it rock you.",
     sounds: {
       rain: "Rain",
       ocean: "Ocean",
@@ -628,6 +628,7 @@ export const en: Dict = {
     stop: "Stop everything",
     note: "Sounds are generated right on your device. They stop if you leave the app.",
     lastTime: "Like last time",
+    silentHint: "No sound? Check that your phone isn’t on silent and the volume is up, then tap again.",
   },
   poetry: {
     poems: [
