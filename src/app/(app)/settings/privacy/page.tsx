@@ -7,7 +7,7 @@ export default async function PrivacyPage() {
   const { t } = await getT();
   const points = v.role === "her" ? t.arr("privacy.pointsHer") : t.arr("privacy.pointsPartner");
   const rooms = [
-    { icon: "her", tone: "rose", name: t("nav.her"), text: t("privacy.her") },
+    { icon: "her", tone: "rose", name: v.role === "her" ? t("nav.her") : t("privacy.herRoom"), text: t("privacy.her") },
     { icon: "refuge", tone: "mauve", name: t("nav.refuge"), text: t("privacy.refuge") },
     { icon: "us", tone: "gold", name: t("nav.us"), text: t("privacy.us") },
   ] as const;

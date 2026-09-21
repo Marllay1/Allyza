@@ -100,7 +100,7 @@ export function AppShell({ userId, role, softMode, initialUnread, children }: Pr
                 <AppIcon name="sun" size={20} />
               </button>
             )}
-            <span className="eyebrow pl-1">{t(`space.${space}`)}</span>
+            <span className="eyebrow pl-1">{t(role === "partner" && space === "her" ? "space.us" : `space.${space}`)}</span>
           </div>
         </header>
 
