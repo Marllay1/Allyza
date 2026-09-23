@@ -16,6 +16,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import type { Translator } from "@/lib/i18n/translate";
 import { useReactions, type Reaction } from "@/lib/use-reactions";
 import { useSignedUrls } from "@/lib/use-signed-urls";
+import { playSfx } from "@/lib/sfx";
 import { PhotoViewer } from "@/features/messaging/PhotoViewer";
 import { useVoiceRecorder } from "@/lib/use-voice-recorder";
 import { useUnread } from "@/components/AppShell";
@@ -156,7 +157,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `couple_id=eq.${coupleId}` }, (p) => {
         const m = p.new as ChatMessage;
         upsert(m);
-        if (m.author_id !== me.id && document.visibilityState === "visible") doMarkRead();
+        if (m.author_id !== me.id && document.visibilityState === "visible") { doMarkRead(); playSfx("received"); }
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages", filter: `couple_id=eq.${coupleId}` }, (p) => upsert(p.new as ChatMessage))
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "message_cursors", filter: `couple_id=eq.${coupleId}` }, (p) => {
@@ -242,6 +243,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
     if (body) {
       const tmp: ChatMessage = { id: `tmp-${crypto.randomUUID()}`, author_id: me.id, kind: "text", body, storage_path: null, duration_ms: null, reply_to: replyId ?? null, edited_at: null, deleted_at: null, created_at: new Date().toISOString(), tmp: true };
       setMessages((c) => [...c, tmp]);
+      playSfx("sent");
       const r = await sendTextMessageAction({ body, replyTo: replyId });
       if (r.ok) upsert(r.data as ChatMessage); else { setMessages((c) => c.filter((x) => x.id !== tmp.id)); setError(r.error); }
     }
@@ -253,7 +255,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
         const up = await supabase.storage.from("couple-media").upload(path, img.blob, { contentType: img.type });
         if (up.error) throw up.error;
         const r = await sendMediaMessageAction({ kind: "image", path });
-        if (r.ok) upsert(r.data as ChatMessage); else throw new Error(r.error);
+        if (r.ok) { upsert(r.data as ChatMessage); playSfx("sent"); } else throw new Error(r.error);
       } catch { setError("generic"); }
     }
     setBusy(false);
@@ -265,6 +267,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
     setReplyTo(null);
     const tmp: ChatMessage = { id: `tmp-${crypto.randomUUID()}`, author_id: me.id, kind: "sticker", body: id, storage_path: null, duration_ms: null, reply_to: replyId ?? null, edited_at: null, deleted_at: null, created_at: new Date().toISOString(), tmp: true };
     setMessages((c) => [...c, tmp]);
+    playSfx("sent");
     const r = await sendStickerMessageAction({ stickerId: id, replyTo: replyId });
     if (r.ok) upsert(r.data as ChatMessage); else { setMessages((c) => c.filter((x) => x.id !== tmp.id)); setError(r.error); }
   };
@@ -279,7 +282,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
       const up = await supabase.storage.from("couple-media").upload(path, recorder.blob.blob, { contentType: recorder.blob.mime.split(";")[0] });
       if (up.error) throw up.error;
       const r = await sendMediaMessageAction({ kind: "audio", path, durationMs: recorder.blob.ms });
-      if (r.ok) upsert(r.data as ChatMessage); else throw new Error(r.error);
+      if (r.ok) { upsert(r.data as ChatMessage); playSfx("sent"); } else throw new Error(r.error);
       recorder.reset();
     } catch { setError("generic"); }
     setBusy(false);

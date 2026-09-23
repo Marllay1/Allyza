@@ -6,6 +6,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { CallOverlay, type CallPerson, type CallPhase } from "@/features/calls/CallOverlay";
 import { useRing } from "@/features/calls/use-ring";
+import { playSfx, type Sfx } from "@/lib/sfx";
 
 type Kind = "audio" | "video";
 type Signal = { callId: string; from: string; type: "ringing" | "offer" | "answer" | "ice" | "hangup" | "reject" | "media"; sdp?: string; candidate?: RTCIceCandidateInit; muted?: boolean; cameraOff?: boolean; kind?: Kind };
@@ -67,8 +68,9 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     void chan.current?.send({ type: "broadcast", event: "signal", payload: { callId: c.id, from: myId, type, kind: c.kind, ...extra } satisfies Signal });
   }, [myId]);
 
-  const cleanup = useCallback((message: string | null) => {
+  const cleanup = useCallback((message: string | null, sfx?: Sfx) => {
     const c = live.current;
+    if (c && sfx) playSfx(sfx);
     c?.timers.forEach(clearTimeout);
     c?.intervals.forEach(clearInterval);
     live.current = null;
@@ -133,6 +135,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
       if (p.connectionState === "connected") {
         setReconnecting(false);
         if (!c.connectedAt) {
+          playSfx("connect");
           c.connectedAt = Date.now();
           c.timers.forEach(clearTimeout); c.timers = [];
           c.intervals.forEach(clearInterval);
@@ -177,7 +180,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     const status = reason === "failed" ? "failed" : reason === "missed" ? "missed" : c.role === "caller" && !c.answered ? "cancelled" : "ended";
     send("hangup");
     void updateCallStatusAction({ id: c.id, status });
-    cleanup(reason === "failed" ? t("call.failed") : reason === "missed" ? t(c.acked ? "call.noAnswer" : "call.unreachable", { name: otherName }) : null);
+    cleanup(reason === "failed" ? t("call.failed") : reason === "missed" ? t(c.acked ? "call.noAnswer" : "call.unreachable", { name: otherName }) : null, reason === "hangup" ? "hangup" : "dropped");
   }, [cleanup, otherName, send, t]);
 
   useEffect(() => { endRef.current = endCall; }, [endCall]);
@@ -224,7 +227,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
       c.timers.push(setTimeout(() => { if (live.current && !live.current.answered) endCall("missed"); }, RING_TIMEOUT_MS));
     } catch {
       void updateCallStatusAction({ id, status: "failed" });
-      cleanup(t("call.failed"));
+      cleanup(t("call.failed"), "dropped");
     }
   }, [buildPeer, cleanup, endCall, getMedia, phase, send, t]);
 
@@ -266,7 +269,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     if (!c) return;
     send("reject");
     void updateCallStatusAction({ id: c.id, status: "rejected" });
-    cleanup(null);
+    cleanup(null, "hangup");
   }, [cleanup, send]);
 
   const showIncoming = useCallback((row: CallRow) => {
@@ -275,7 +278,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     live.current = { id: row.id, kind: row.kind, role: "callee", answered: false, acked: false, offerSdp: null, lastOffer: null, sentIce: [], remoteIce: [], connectedAt: null, iceRestarts: 0, timers: [], intervals: [] };
     setKind(row.kind); setNotice(null); setPhase("incoming");
     send("ringing");
-    live.current.timers.push(setTimeout(() => { if (live.current?.id === row.id && !live.current.answered) cleanup(t("call.missed", { name: otherName })); }, STALE_RING_MS));
+    live.current.timers.push(setTimeout(() => { if (live.current?.id === row.id && !live.current.answered) cleanup(t("call.missed", { name: otherName }), "dropped"); }, STALE_RING_MS));
   }, [cleanup, myId, otherName, send, t]);
 
   useEffect(() => {
@@ -330,10 +333,10 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
           if (m.cameraOff !== undefined) setRemoteCameraOff(m.cameraOff);
           break;
         case "reject":
-          if (c.role === "caller") cleanup(t("call.declined", { name: otherName }));
+          if (c.role === "caller") cleanup(t("call.declined", { name: otherName }), "hangup");
           break;
         case "hangup":
-          cleanup(c.role === "callee" && !c.answered ? t("call.missed", { name: otherName }) : t("call.ended"));
+          cleanup(c.role === "callee" && !c.answered ? t("call.missed", { name: otherName }) : t("call.ended"), c.answered || c.role === "caller" ? "hangup" : "dropped");
           break;
       }
     };
@@ -350,9 +353,9 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
         const row = p.new as CallRow;
         const c = live.current;
         if (!c || c.id !== row.id || !closedStatuses.includes(row.status)) return;
-        if (c.role === "callee" && !c.answered) cleanup(t("call.missed", { name: otherName }));
-        else if (c.role === "caller" && row.status === "rejected") cleanup(t("call.declined", { name: otherName }));
-        else if (row.status === "ended" || row.status === "failed") cleanup(t("call.ended"));
+        if (c.role === "callee" && !c.answered) cleanup(t("call.missed", { name: otherName }), "dropped");
+        else if (c.role === "caller" && row.status === "rejected") cleanup(t("call.declined", { name: otherName }), "hangup");
+        else if (row.status === "ended" || row.status === "failed") cleanup(t("call.ended"), "hangup");
       })
       .subscribe();
     chan.current = ch;
