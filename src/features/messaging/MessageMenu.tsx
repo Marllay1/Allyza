@@ -20,7 +20,7 @@ export function PressTarget({ onLongPress, disabled, className, style, children 
   return (
     <div
       className={className}
-      style={{ WebkitTouchCallout: "none", ...style }}
+      style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none", ...style }}
       onPointerDown={(e) => {
         if (disabled || (e.pointerType === "mouse" && e.button !== 0)) return;
         origin.current = { x: e.clientX, y: e.clientY };
@@ -73,24 +73,31 @@ export function MessageMenu({ anchor, mine, actions, myReactions, onReact, onAct
   menuY = Math.max(menuY, reactY + REACT_H + GAP);
   if (menuY + menuH > vh - EDGE) { menuY = vh - EDGE - menuH; reactY = Math.max(EDGE, menuY - GAP - REACT_H); }
 
+  // The dimming layer has a cut-out exactly over the selected message: it is never blurred, dimmed or covered.
+  const pad = 3;
+  const x1 = Math.max(0, anchor.left - pad), x2 = anchor.right + pad, y1 = Math.max(0, anchor.top - pad), y2 = anchor.bottom + pad;
+  const hole = `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${x1}px ${y1}px, ${x1}px ${y2}px, ${x2}px ${y2}px, ${x2}px ${y1}px, ${x1}px ${y1}px)`;
+
   const icon: Record<MenuAction, IconName> = { reply: "replyArrow", copy: "copy", edit: "edit", delete: "trash" };
   const label: Record<MenuAction, string> = { reply: t("messaging.reply"), copy: t("common.copy"), edit: t("common.edit"), delete: t("common.delete") };
 
   return (
     <Portal>
-      <div role="dialog" aria-modal="true" aria-label={t("messaging.actions")} className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[2px]" onClick={onClose}>
-        <div className="glass absolute flex items-center justify-between rounded-full px-2 pop-in" style={{ top: reactY, left: clampX(REACT_W), width: REACT_W, height: REACT_H }} onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label={t("messaging.actions")} className="fixed inset-0 z-50 select-none" style={{ WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
+        onClick={onClose} onContextMenu={(e) => e.preventDefault()}>
+        <div aria-hidden className="absolute inset-0 bg-black/40" style={{ clipPath: hole }} />
+        <div className="absolute flex items-center justify-between rounded-full px-2 pop-in border border-line shadow-lg select-none" style={{ top: reactY, left: clampX(REACT_W), width: REACT_W, height: REACT_H, background: "var(--surface)" }} onClick={(e) => e.stopPropagation()}>
           {REACTION_EMOJIS.map((e) => (
             <button key={e} type="button" aria-pressed={myReactions.has(e)} onClick={() => onReact(e)}
-              className={`size-10 grid place-items-center rounded-full text-[1.35rem] transition active:scale-90 ${myReactions.has(e) ? "bg-accent/25" : "hover:bg-white/10"}`}>
+              className={`size-10 grid place-items-center rounded-full text-[1.35rem] transition active:scale-90 ${myReactions.has(e) ? "bg-accent/25" : "hover:bg-surface2"}`}>
               {e}
             </button>
           ))}
         </div>
-        <div className="glass absolute grid rounded-3xl p-1.5 pop-in" style={{ top: menuY, left: clampX(MENU_W), width: MENU_W }} onClick={(e) => e.stopPropagation()}>
+        <div className="absolute grid rounded-3xl p-1.5 pop-in border border-line shadow-lg select-none" style={{ top: menuY, left: clampX(MENU_W), width: MENU_W, background: "var(--surface)" }} onClick={(e) => e.stopPropagation()}>
           {actions.map((a) => (
             <button key={a} type="button" onClick={() => onAction(a)}
-              className={`flex items-center justify-between gap-3 rounded-2xl px-3.5 text-left transition hover:bg-white/10 active:bg-white/15 ${a === "delete" ? "text-danger" : ""}`}
+              className={`flex items-center justify-between gap-3 rounded-2xl px-3.5 text-left transition hover:bg-surface2 active:bg-surface2 ${a === "delete" ? "text-danger" : ""}`}
               style={{ height: ROW_H }}>
               <span>{label[a]}</span>
               <AppIcon name={icon[a]} size={17} />

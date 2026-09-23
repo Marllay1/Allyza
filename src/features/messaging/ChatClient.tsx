@@ -267,6 +267,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
   const openMenuFor = (m: ChatMessage, el: HTMLElement) => {
     if (m.tmp || m.deleted_at) return;
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    window.getSelection()?.removeAllRanges();
     const r = el.getBoundingClientRect();
     setMenu({ id: m.id, anchor: { top: r.top, bottom: r.bottom, left: r.left, right: r.right } });
   };
