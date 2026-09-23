@@ -58,7 +58,22 @@ export function AppShell({ userId, role, softMode, initialUnread, children }: Pr
         setUnread((u) => ({ ...u, [k]: (u[k] ?? 0) + 1 }));
       })
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    // A phone that was asleep or offline missed the live events: when the app comes back, re-read the real state.
+    const resync = async () => {
+      if (document.visibilityState !== "visible") return;
+      const { data } = await supabase.from("notifications").select("kind").is("read_at", null).limit(200);
+      if (!data) return;
+      const next: Unread = { journal: 0, media: 0, refuge: 0, little: 0, surprise: 0, message: 0 };
+      for (const r of data as { kind: Kind }[]) if (r.kind in next && pathRef.current !== viewing[r.kind]) next[r.kind]++;
+      setUnread(next);
+    };
+    document.addEventListener("visibilitychange", resync);
+    window.addEventListener("online", resync);
+    return () => {
+      document.removeEventListener("visibilitychange", resync);
+      window.removeEventListener("online", resync);
+      supabase.removeChannel(ch);
+    };
   }, [userId, markRead]);
 
   // The navbar contracts while the page moves and comes back when it rests. One passive listener,
