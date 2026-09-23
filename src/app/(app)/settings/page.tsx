@@ -45,6 +45,7 @@ export default async function SettingsPage() {
       <div className="grid gap-3">
         {isHer && <TileLink href="/settings/sharing" icon="lock" tone="rose" title={t("settings.sharing")} text={t("settings.sharingText")} />}
         <TileLink href="/settings/privacy" icon="privacy" tone="mauve" title={t("settings.privacy")} text={t("settings.privacyText")} />
+        <TileLink href="/settings/sounds" icon="volume" tone="mauve" title={t("settings.sounds")} text={t("settings.soundsText")} />
         <TileLink href="/settings/notifications" icon="bell" tone="gold" title={t("settings.notifications")} text={t("settings.notificationsText")} />
         <TileLink href="/settings/account" icon="key" tone="accent" title={t("settings.security")} text={t("settings.securityText")} />
       </div>
