@@ -1280,6 +1280,8 @@ export const en: Dict = {
     unreachable: "{name} can’t be reached right now",
     remoteCameraOff: "{name} turned their camera off",
     swapViews: "Swap the two views",
+    back: "Back (the call continues)",
+    expand: "Reopen the call",
   },
   applock: {
     title: "App protection",

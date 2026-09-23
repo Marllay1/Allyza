@@ -17,6 +17,7 @@ import type { Translator } from "@/lib/i18n/translate";
 import { useReactions, type Reaction } from "@/lib/use-reactions";
 import { useSignedUrls } from "@/lib/use-signed-urls";
 import { playSfx } from "@/lib/sfx";
+import { useCall } from "@/features/calls/CallProvider";
 import { PhotoViewer } from "@/features/messaging/PhotoViewer";
 import { useVoiceRecorder } from "@/lib/use-voice-recorder";
 import { useUnread } from "@/components/AppShell";
@@ -120,6 +121,10 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
   const lastTypingSent = useRef(0);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recorder = useVoiceRecorder();
+  // The microphone belongs to the call while one is going: a voice note must neither start nor keep recording then.
+  const { inCall } = useCall();
+  const { state: recState, stop: stopRecorder } = recorder;
+  useEffect(() => { if (inCall && recState === "recording") stopRecorder(true); }, [inCall, recState, stopRecorder]);
   const { reactions, toggle: toggleReaction } = useReactions(coupleId, me.id, initialReactions);
 
   const unreadDividerAt = useMemo(() => {
@@ -274,6 +279,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
 
   const sendVoice = async () => {
     if (!recorder.blob) return;
+    if (recorder.blob.blob.size < 200) { recorder.reset(); return; }
     setBusy(true); setError(null);
     try {
       const ext = recorder.blob.mime.includes("mp4") ? "m4a" : recorder.blob.mime.includes("aac") ? "aac" : "webm";
@@ -369,7 +375,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
               const quoted = m.reply_to ? byId.get(m.reply_to) : null;
               const read = mine && !!theirCursor && last.created_at <= theirCursor;
               return (
-                <div key={m.id} id={`msg-${m.id}`} className={`flex gap-2 items-end ${mine ? "flex-row-reverse" : ""} ${m.tmp ? "opacity-60" : ""}`}>
+                <div key={m.id} id={`msg-${m.id}`} className={`flex items-end ${mine ? "flex-row-reverse gap-2" : "gap-1.5 -ml-2"} ${m.tmp ? "opacity-60" : ""}`}>
                   {!mine && <Avatar path={other.avatar} tone={other.tone} size={26} className="mb-1" />}
                   <div className={`group relative max-w-[78%] flex flex-col ${mine ? "items-end" : "items-start"}`}>
                     {group.some((g) => g.id === unreadDividerAt) && (
@@ -522,7 +528,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
             {text.trim() || files.length > 0 ? (
               <button type="button" className="btn btn-primary !min-h-10 !px-3.5 shrink-0" onClick={send} disabled={busy} aria-label={t("common.send")}><AppIcon name="send" size={19} /></button>
             ) : recorder.supported ? (
-              <button type="button" className="icon-btn !size-10 shrink-0" aria-label={t("messaging.recordVoice")} onClick={recorder.start}><AppIcon name="mic" size={20} /></button>
+              <button type="button" className="icon-btn !size-10 shrink-0" aria-label={t("messaging.recordVoice")} disabled={inCall} onClick={() => { if (!inCall) void recorder.start(); }}><AppIcon name="mic" size={20} /></button>
             ) : null}
           </div>
         )}

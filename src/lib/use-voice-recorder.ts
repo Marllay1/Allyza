@@ -77,13 +77,13 @@ export function useVoiceRecorder() {
     const finalMs = Date.now() - startedAt.current;
     mr.onstop = () => {
       cleanup();
-      if (!discard && chunks.current.length) {
+      if (!discard && chunks.current.some((c) => c.size > 0)) {
         const type = mr.mimeType || chunks.current[0]?.type || pickMimeType() || "audio/mp4";
         const b = new Blob(chunks.current, { type });
         setBlob({ blob: b, mime: type, ms: finalMs });
         setPreviewUrl(URL.createObjectURL(b));
       }
-      setState(discard ? "idle" : "ready");
+      setState(discard || !chunks.current.some((c) => c.size > 0) ? "idle" : "ready");
       setLevels([]);
     };
     mr.stop();

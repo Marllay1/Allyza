@@ -1278,6 +1278,8 @@ export const fr = {
     unreachable: "{name} n’est pas joignable pour le moment",
     remoteCameraOff: "{name} a coupé sa caméra",
     swapViews: "Inverser les deux vues",
+    back: "Retour (l’appel continue)",
+    expand: "Rouvrir l’appel",
   },
   applock: {
     title: "Protection de l’application",

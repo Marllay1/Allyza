@@ -24,6 +24,9 @@ export type OverlayProps = {
   facingUser: boolean;
   canSwitchOutput: boolean;
   speakerOn: boolean;
+  minimized: boolean;
+  onMinimize: () => void;
+  onExpand: () => void;
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
   onAccept: () => void;
@@ -45,10 +48,12 @@ function StreamVideo({ stream, muted, mirror, className }: { stream: MediaStream
     if (!v) return;
     if (v.srcObject !== stream) v.srcObject = stream;
     const play = () => { void v.play().catch(() => {}); };
+    const onVisible = () => { if (document.visibilityState === "visible") play(); };
     play();
     stream?.addEventListener("addtrack", play);
     v.addEventListener("loadedmetadata", play);
-    return () => { stream?.removeEventListener("addtrack", play); v.removeEventListener("loadedmetadata", play); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { stream?.removeEventListener("addtrack", play); v.removeEventListener("loadedmetadata", play); document.removeEventListener("visibilitychange", onVisible); };
   }, [stream]);
   return <video ref={ref} autoPlay playsInline muted={muted} data-stream={muted ? "muted" : "audible"} className={className} style={mirror ? { transform: "scaleX(-1)" } : undefined} />;
 }
@@ -125,6 +130,75 @@ function FloatingPreview({ stream, muted, mirror, off, fallback, onSwap, label }
   );
 }
 
+
+/* ── the call shrunk to a floating palette ──────────────────────────────── */
+
+const MINI_W = 112, MINI_H = 156, MINI_EDGE = 12, TAB_W = 30;
+
+/**
+ * The same live call, just smaller: it plays the same streams (so the voice never stops), can be dragged
+ * anywhere, and pushed against a screen edge where only a small arrow stays visible to bring it back.
+ */
+function MiniCall({ p, status, remoteHasVideo }: { p: OverlayProps; status: string | null; remoteHasVideo: boolean }) {
+  const { t } = useI18n();
+  const video = p.kind === "video";
+  const [pos, setPos] = useState(() => ({ x: window.innerWidth - MINI_W - MINI_EDGE, y: 84 }));
+  const [docked, setDocked] = useState<"l" | "r" | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const grab = useRef<{ dx: number; dy: number; sx: number; sy: number; moved: boolean } | null>(null);
+  const clampY = (y: number) => Math.min(Math.max(48, y), window.innerHeight - MINI_H - 96);
+
+  const x = docked === "l" ? -MINI_W - 8 : docked === "r" ? window.innerWidth + 8 : pos.x;
+  return (
+    <>
+      <div
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          grab.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y, sx: e.clientX, sy: e.clientY, moved: false };
+          setDragging(true);
+        }}
+        onPointerMove={(e) => {
+          const g = grab.current;
+          if (!g) return;
+          if (Math.hypot(e.clientX - g.sx, e.clientY - g.sy) > 6) g.moved = true;
+          if (g.moved) setPos({ x: Math.min(Math.max(-MINI_W * 0.7, e.clientX - g.dx), window.innerWidth - MINI_W * 0.3), y: clampY(e.clientY - g.dy) });
+        }}
+        onPointerUp={() => {
+          const g = grab.current;
+          grab.current = null;
+          setDragging(false);
+          if (!g?.moved) { p.onExpand(); return; }
+          const vw = window.innerWidth;
+          if (pos.x < -MINI_W * 0.3) { setDocked("l"); return; }
+          if (pos.x + MINI_W > vw + MINI_W * 0.3) { setDocked("r"); return; }
+          setPos((c) => ({ x: c.x + MINI_W / 2 < vw / 2 ? MINI_EDGE : vw - MINI_W - MINI_EDGE, y: clampY(c.y) }));
+        }}
+        onPointerCancel={() => { grab.current = null; setDragging(false); }}
+        className={`fixed z-[60] touch-none select-none overflow-hidden rounded-[24px] border border-white/25 bg-[#24123f] text-white shadow-[0_18px_40px_-12px_rgba(0,0,0,0.65)] ${dragging ? "scale-[1.04] cursor-grabbing" : "cursor-grab transition-[left,top,transform] duration-300 motion-reduce:transition-none"}`}
+        style={{ left: x, top: pos.y, width: MINI_W, height: MINI_H, background: "radial-gradient(120% 90% at 30% 10%, #4a2a66 0%, #24123f 60%, #120a2a 100%)" }}
+        role="button" tabIndex={docked ? -1 : 0} aria-label={t("call.expand")}
+        onKeyDown={(e) => { if (e.key === "Enter") p.onExpand(); }}>
+        {/* the remote voice (and picture, on a video call) keeps playing here, whatever is on screen */}
+        <StreamVideo stream={p.remoteStream} className={video && remoteHasVideo ? "absolute inset-0 size-full object-cover" : "absolute size-px opacity-0 pointer-events-none"} />
+        {!(video && remoteHasVideo) && <div className="absolute inset-0 grid place-items-center pb-9"><Avatar path={p.other.avatar} tone={p.other.tone} size={56} /></div>}
+        <p className="absolute inset-x-0 top-0 px-2 pt-1.5 text-center text-[0.68rem] tabular-nums bg-gradient-to-b from-black/55 to-transparent" role="status">{status}</p>
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 pb-1.5 pt-4 bg-gradient-to-t from-black/60 to-transparent" onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}>
+          <button type="button" aria-label={t("call.mute")} aria-pressed={p.muted} onClick={p.onToggleMute}
+            className={`size-8 rounded-full grid place-items-center ${p.muted ? "bg-white text-[#3b1f52]" : "bg-white/20"}`}><AppIcon name={p.muted ? "micOff" : "mic"} size={15} /></button>
+          <button type="button" aria-label={t("call.end")} onClick={p.onHangup} className="size-8 rounded-full grid place-items-center bg-danger"><AppIcon name="callEnd" size={15} /></button>
+        </div>
+      </div>
+      {docked && (
+        <button type="button" aria-label={t("call.expand")} onClick={() => { setDocked(null); setPos((c) => ({ x: docked === "l" ? MINI_EDGE : window.innerWidth - MINI_W - MINI_EDGE, y: clampY(c.y) })); }}
+          className={`fixed z-[60] h-16 grid place-items-center text-white bg-[#3b1f52]/90 border border-white/25 shadow-lg backdrop-blur ${docked === "l" ? "left-0 rounded-r-2xl border-l-0" : "right-0 rounded-l-2xl border-r-0"}`}
+          style={{ width: TAB_W, top: pos.y + MINI_H / 2 - 32 }}>
+          <AppIcon name={docked === "l" ? "forward" : "back"} size={20} />
+        </button>
+      )}
+    </>
+  );
+}
+
 /* ── the screen ─────────────────────────────────────────────────────────── */
 
 export function CallOverlay(p: OverlayProps) {
@@ -175,6 +249,9 @@ export function CallOverlay(p: OverlayProps) {
     </div>
   );
 
+  // Minimised: same call, same streams, only the screen changes.
+  if (p.minimized && p.phase !== "incoming") return <Portal><MiniCall p={p} status={status} remoteHasVideo={remoteHasVideo} /></Portal>;
+
   return (
     <Portal>
       <div role="dialog" aria-modal="true" aria-label={t(video ? "call.videoCall" : "call.audioCall")}
@@ -193,6 +270,13 @@ export function CallOverlay(p: OverlayProps) {
           <StreamVideo stream={p.remoteStream} className="absolute size-px opacity-0 pointer-events-none" />
         )}
         {video && live && bigHasVideo && <div aria-hidden className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/60 pointer-events-none" />}
+
+        {p.phase !== "incoming" && p.phase !== "ended" && (
+          <button type="button" aria-label={t("call.back")} onClick={p.onMinimize}
+            className="absolute left-4 top-[max(1.25rem,calc(env(safe-area-inset-top)+0.5rem))] z-20 size-11 rounded-full grid place-items-center bg-white/15 border border-white/15 backdrop-blur-xl active:scale-90 transition">
+            <AppIcon name="back" size={22} />
+          </button>
+        )}
 
         {/* top: who, and how it's going */}
         <div className="absolute inset-x-0 top-0 z-10 grid justify-items-center gap-1 px-6 pt-[max(1.25rem,calc(env(safe-area-inset-top)+0.5rem))] text-center pointer-events-none">

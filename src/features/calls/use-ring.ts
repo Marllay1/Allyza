@@ -1,10 +1,10 @@
 "use client";
 import { useEffect } from "react";
 import { haptic } from "@/lib/local-pref";
-import { RING_STYLES, chosenRing, type RingId } from "@/lib/sfx";
+import { RING_STYLES, audioContext, chosenRing, type RingId } from "@/lib/sfx";
 
 /** One burst of the incoming ring in the given style, on an existing audio context. */
-export function playRingBurst(ctx: AudioContext, style: RingId, level = 0.14) {
+export function playRingBurst(ctx: AudioContext, style: RingId, level = 0.14, out: AudioNode = ctx.destination) {
   const now = ctx.currentTime;
   for (const [from, to, freq] of RING_STYLES[style].tones) {
     const osc = ctx.createOscillator();
@@ -14,7 +14,7 @@ export function playRingBurst(ctx: AudioContext, style: RingId, level = 0.14) {
     gain.gain.linearRampToValueAtTime(level, now + from + 0.03);
     gain.gain.setValueAtTime(level, now + to - 0.05);
     gain.gain.linearRampToValueAtTime(0, now + to);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(out);
     osc.start(now + from);
     osc.stop(now + to + 0.05);
   }
@@ -28,17 +28,18 @@ export function playRingBurst(ctx: AudioContext, style: RingId, level = 0.14) {
 export function useRing(mode: "incoming" | "ringback" | null) {
   useEffect(() => {
     if (!mode) return;
-    let ctx: AudioContext | null = null;
-    try {
-      const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (AC) { ctx = new AC(); void ctx.resume().catch(() => {}); }
-    } catch { ctx = null; }
+    // The shared context was unlocked by the person's first tap, which is what lets a ring play on iOS.
+    // Everything goes through one gain node so the ring can be cut the instant the call is answered, refused or over.
+    const ctx = audioContext();
+    void ctx?.resume().catch(() => {});
+    const master = ctx ? ctx.createGain() : null;
+    if (ctx && master) master.connect(ctx.destination);
 
     const style = chosenRing();
     const burst = () => {
       if (mode === "incoming") haptic([300, 150, 300]);
-      if (!ctx || ctx.state === "closed") return;
-      if (mode === "incoming") { playRingBurst(ctx, style); return; }
+      if (!ctx || !master || ctx.state === "closed") return;
+      if (mode === "incoming") { playRingBurst(ctx, style, 0.14, master); return; }
       const now = ctx.currentTime;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -47,12 +48,16 @@ export function useRing(mode: "incoming" | "ringback" | null) {
       gain.gain.linearRampToValueAtTime(0.07, now + 0.03);
       gain.gain.setValueAtTime(0.07, now + 0.95);
       gain.gain.linearRampToValueAtTime(0, now + 1.0);
-      osc.connect(gain).connect(ctx.destination);
+      osc.connect(gain).connect(master);
       osc.start(now);
       osc.stop(now + 1.05);
     };
     burst();
     const id = setInterval(burst, mode === "incoming" ? RING_STYLES[style].every : 3200);
-    return () => { clearInterval(id); ctx?.close().catch(() => {}); };
+    return () => {
+      clearInterval(id);
+      if (ctx && master) { master.gain.cancelScheduledValues(ctx.currentTime); master.gain.setValueAtTime(0, ctx.currentTime); }
+      setTimeout(() => master?.disconnect(), 60);
+    };
   }, [mode]);
 }

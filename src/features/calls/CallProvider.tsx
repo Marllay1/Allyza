@@ -41,6 +41,8 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
   const [cameraOff, setCameraOff] = useState(false);
   const [outputs, setOutputs] = useState(0);
   const [speakerOn, setSpeakerOn] = useState(false);
+  // The call and its screen are separate: the screen can shrink to a floating palette while the call carries on.
+  const [minimized, setMinimized] = useState(false);
   const [remoteCameraOff, setRemoteCameraOff] = useState(false);
   const [remoteMuted, setRemoteMuted] = useState(false);
   const [facingUser, setFacingUser] = useState(true);
@@ -88,8 +90,8 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     if (dismiss.current) clearTimeout(dismiss.current);
     if (message) {
       setNotice(message); setPhase("ended");
-      dismiss.current = setTimeout(() => { setPhase("idle"); setNotice(null); }, 3200);
-    } else { setNotice(null); setPhase("idle"); }
+      dismiss.current = setTimeout(() => { setPhase("idle"); setNotice(null); setMinimized(false); }, 3200);
+    } else { setNotice(null); setPhase("idle"); setMinimized(false); }
   }, []);
 
   const getMedia = useCallback((k: Kind, face: "user" | "environment" = "user") =>
@@ -186,6 +188,27 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
   useEffect(() => { endRef.current = endCall; }, [endCall]);
   useEffect(() => { if (other) void getIce(); }, [other, getIce]);
 
+  // Coming back from the background: if the system ended the microphone capture, take it up again on the same call.
+  useEffect(() => {
+    if (phase !== "connected") return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      const old = local.current?.getAudioTracks()[0];
+      if (!old || old.readyState !== "ended") return;
+      const sender = pc.current?.getSenders().find((s) => s.track === old);
+      if (!sender) return;
+      navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }).then(async (fresh) => {
+        const track = fresh.getAudioTracks()[0];
+        track.enabled = old.enabled;
+        await sender.replaceTrack(track);
+        local.current?.removeTrack(old);
+        local.current?.addTrack(track);
+      }).catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [phase]);
+
   // A screen that dims or locks mid-call suspends the page and cuts the audio: keep it awake while connected.
   useEffect(() => {
     if (phase !== "connected" || !("wakeLock" in navigator)) return;
@@ -202,7 +225,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     if (live.current || (phase !== "idle" && phase !== "ended")) return;
     if (dismiss.current) clearTimeout(dismiss.current);
     if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === "undefined") { cleanup(t("call.unsupported")); return; }
-    setKind(k); setPhase("outgoing"); setNotice(null);
+    setKind(k); setPhase("outgoing"); setNotice(null); setMinimized(false);
     let stream: MediaStream;
     try { stream = await getMedia(k); } catch { cleanup(t("call.permission")); return; }
     const created = await startCallAction({ kind: k });
@@ -276,7 +299,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     if (live.current || row.callee_id !== myId || row.status !== "ringing" || closedIds.current.has(row.id)) return;
     if (dismiss.current) clearTimeout(dismiss.current);
     live.current = { id: row.id, kind: row.kind, role: "callee", answered: false, acked: false, offerSdp: null, lastOffer: null, sentIce: [], remoteIce: [], connectedAt: null, iceRestarts: 0, timers: [], intervals: [] };
-    setKind(row.kind); setNotice(null); setPhase("incoming");
+    setKind(row.kind); setNotice(null); setPhase("incoming"); setMinimized(false);
     send("ringing");
     live.current.timers.push(setTimeout(() => { if (live.current?.id === row.id && !live.current.answered) cleanup(t("call.missed", { name: otherName }), "dropped"); }, STALE_RING_MS));
   }, [cleanup, myId, otherName, send, t]);
@@ -431,7 +454,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
       {other && phase !== "idle" && (
         <CallOverlay
           phase={phase} kind={kind} other={other} ringing={ringing} reconnecting={reconnecting} elapsed={elapsed} notice={notice}
-          muted={muted} cameraOff={cameraOff} speakerOn={speakerOn} canSwitchOutput={outputs > 1 && typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype}
+          muted={muted} cameraOff={cameraOff} minimized={minimized} onMinimize={() => setMinimized(true)} onExpand={() => setMinimized(false)} speakerOn={speakerOn} canSwitchOutput={outputs > 1 && typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype}
           localStream={localStream} remoteStream={remoteStream} remoteCameraOff={remoteCameraOff} remoteMuted={remoteMuted} facingUser={facingUser}
           onAccept={() => void accept()} onDecline={decline} onHangup={() => endCall("hangup")}
           onToggleMute={toggleMute} onToggleCamera={toggleCamera} onFlipCamera={() => void flipCamera()} onCycleOutput={() => void cycleOutput()}
