@@ -68,16 +68,46 @@ export const audioContext = () => {
 };
 
 if (typeof window !== "undefined") {
-  const unlock = () => { void audioContext()?.resume().catch(() => {}); };
-  for (const ev of ["pointerdown", "keydown", "touchend"]) window.addEventListener(ev, unlock, { passive: true });
+  // iOS only truly unlocks audio once something (even silence) has been played inside a tap.
+  const unlock = () => {
+    const c = audioContext();
+    if (!c) return;
+    void c.resume().then(() => {
+      const src = c.createBufferSource();
+      src.buffer = c.createBuffer(1, 1, 22050);
+      src.connect(c.destination);
+      src.start(0);
+    }).catch(() => {});
+  };
+  for (const ev of ["pointerdown", "click", "keydown", "touchend"]) window.addEventListener(ev, unlock, { passive: true });
+}
+
+/**
+ * The audio context, once it is actually running. `resume()` is asynchronous: checking the state right after
+ * calling it (as this used to) meant a context that iOS had suspended, or interrupted when the microphone
+ * opened for a call, never played anything. Resolves null when the browser still refuses (no tap yet).
+ */
+export async function runningContext(): Promise<AudioContext | null> {
+  const c = audioContext();
+  if (!c || c.state === "closed") return null;
+  if (c.state !== "running") {
+    try { await Promise.race([c.resume(), new Promise((r) => setTimeout(r, 500))]); } catch { /* still locked */ }
+  }
+  return c.state === "running" ? c : null;
+}
+
+/** iOS mutes Web Audio on the silent switch unless the page declares it is playing audio: do so while a ring plays. */
+export function setAudioSession(type: "playback" | "auto") {
+  try {
+    const s = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
+    if (s) s.type = type;
+  } catch { /* unsupported */ }
 }
 
 /** Plays a tone regardless of the switches (used for previews in Settings). */
-export function previewTone(id: ToneId) {
-  const c = audioContext();
-  if (!c || c.state === "closed") return;
-  void c.resume().catch(() => {});
-  if (c.state !== "running") return;
+export async function previewTone(id: ToneId) {
+  const c = await runningContext();
+  if (!c) return;
   const now = c.currentTime;
   const { wave, notes } = TONES[id];
   for (const [at, dur, freq, peak] of notes) {
@@ -97,5 +127,5 @@ export function previewTone(id: ToneId) {
 export function playSfx(name: Sfx) {
   if (!sfxEnabled()) return;
   const tone = chosenTone(name);
-  if (tone !== "off") previewTone(tone);
+  if (tone !== "off") void previewTone(tone);
 }

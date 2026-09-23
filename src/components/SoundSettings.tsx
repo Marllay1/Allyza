@@ -5,7 +5,7 @@ import { playRingBurst } from "@/features/calls/use-ring";
 import { useI18n } from "@/lib/i18n/provider";
 import { setLocalPref, useLocalPref } from "@/lib/local-pref";
 import {
-  RING_KEY, RING_STYLES, SFX_CATEGORIES, SFX_ENABLED_KEY, audioContext, previewTone, sfxKey,
+  RING_KEY, RING_STYLES, SFX_CATEGORIES, SFX_ENABLED_KEY, runningContext, previewTone, sfxKey,
   type RingId, type Sfx, type ToneId,
 } from "@/lib/sfx";
 
@@ -16,11 +16,9 @@ export function SoundSettings() {
   const ring = (useLocalPref(RING_KEY, "classic") ?? "classic") as RingId;
   const cats = Object.keys(SFX_CATEGORIES) as Sfx[];
 
-  const previewRing = (id: RingId) => {
-    const c = audioContext();
-    if (!c) return;
-    void c.resume().catch(() => {});
-    playRingBurst(c, id);
+  const previewRing = async (id: RingId) => {
+    const c = await runningContext();
+    if (c) playRingBurst(c, id);
   };
 
   return (

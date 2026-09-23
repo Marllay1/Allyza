@@ -1,7 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { haptic } from "@/lib/local-pref";
-import { RING_STYLES, audioContext, chosenRing, type RingId } from "@/lib/sfx";
+import { RING_STYLES, chosenRing, runningContext, setAudioSession, type RingId } from "@/lib/sfx";
 
 /** One burst of the incoming ring in the given style, on an existing audio context. */
 export function playRingBurst(ctx: AudioContext, style: RingId, level = 0.14, out: AudioNode = ctx.destination) {
@@ -23,22 +23,24 @@ export function playRingBurst(ctx: AudioContext, style: RingId, level = 0.14, ou
 /**
  * The sound of a phone actually ringing on this device: the chosen ring for an incoming call,
  * a softer single-tone ringback for the caller once the other phone has confirmed it is ringing.
- * Browsers may hold audio until the page has had a tap; when they do, vibration still fires.
+ * Browsers hold audio until the page has had a tap (and iOS mutes it on the silent switch unless
+ * told otherwise); when audio is refused, vibration still fires.
  */
 export function useRing(mode: "incoming" | "ringback" | null) {
   useEffect(() => {
     if (!mode) return;
-    // The shared context was unlocked by the person's first tap, which is what lets a ring play on iOS.
-    // Everything goes through one gain node so the ring can be cut the instant the call is answered, refused or over.
-    const ctx = audioContext();
-    void ctx?.resume().catch(() => {});
-    const master = ctx ? ctx.createGain() : null;
-    if (ctx && master) master.connect(ctx.destination);
+    let stopped = false;
+    let master: GainNode | null = null;
+    let masterCtx: AudioContext | null = null;
+    if (mode === "incoming") setAudioSession("playback");
 
     const style = chosenRing();
-    const burst = () => {
+    const burst = async () => {
       if (mode === "incoming") haptic([300, 150, 300]);
-      if (!ctx || !master || ctx.state === "closed") return;
+      const ctx = await runningContext();
+      if (!ctx || stopped) return;
+      // Everything goes through one gain node so the ring can be cut the instant the call is answered, refused or over.
+      if (!master) { master = ctx.createGain(); master.connect(ctx.destination); masterCtx = ctx; }
       if (mode === "incoming") { playRingBurst(ctx, style, 0.14, master); return; }
       const now = ctx.currentTime;
       const osc = ctx.createOscillator();
@@ -52,12 +54,14 @@ export function useRing(mode: "incoming" | "ringback" | null) {
       osc.start(now);
       osc.stop(now + 1.05);
     };
-    burst();
-    const id = setInterval(burst, mode === "incoming" ? RING_STYLES[style].every : 3200);
+    void burst();
+    const id = setInterval(() => void burst(), mode === "incoming" ? RING_STYLES[style].every : 3200);
     return () => {
+      stopped = true;
       clearInterval(id);
-      if (ctx && master) { master.gain.cancelScheduledValues(ctx.currentTime); master.gain.setValueAtTime(0, ctx.currentTime); }
-      setTimeout(() => master?.disconnect(), 60);
+      if (mode === "incoming") setAudioSession("auto");
+      const m = master, c = masterCtx;
+      if (m && c) { m.gain.cancelScheduledValues(c.currentTime); m.gain.setValueAtTime(0, c.currentTime); setTimeout(() => m.disconnect(), 60); }
     };
   }, [mode]);
 }
