@@ -11,12 +11,15 @@ export function ReactionBar({
   reactions,
   myId,
   toggle,
+  showAdd = true,
 }: {
   targetType: ReactionTarget;
   targetId: string;
   reactions: Reaction[];
   myId: string;
   toggle: (type: ReactionTarget, id: string, emoji: string) => void;
+  /** The "+" picker. Off in Messages, where reactions come from long-pressing the message instead. */
+  showAdd?: boolean;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -27,6 +30,8 @@ export function ReactionBar({
     me: mine.some((r) => r.emoji === e && r.author_id === myId),
   })).filter((g) => g.n > 0);
 
+  if (!showAdd && grouped.length === 0) return null;
+
   return (
     <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
       {grouped.map((g) => (
@@ -34,10 +39,10 @@ export function ReactionBar({
           {g.e} {g.n}
         </button>
       ))}
-      <button type="button" className="chip !min-h-8 !px-2.5 !text-sm" aria-expanded={open} aria-label={t("couple.react")} onClick={() => setOpen((o) => !o)}>
+      {showAdd && <button type="button" className="chip !min-h-8 !px-2.5 !text-sm" aria-expanded={open} aria-label={t("couple.react")} onClick={() => setOpen((o) => !o)}>
         <AppIcon name={open ? "close" : "plus"} size={15} />
-      </button>
-      {open &&
+      </button>}
+      {showAdd && open &&
         REACTION_EMOJIS.map((e) => (
           <button key={e} type="button" className="chip !min-h-8 !px-2 !text-base" onClick={() => { toggle(targetType, targetId, e); setOpen(false); }}>
             {e}

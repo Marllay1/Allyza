@@ -34,16 +34,16 @@ export function StatusCard({ name, compact = false }: { name: string; compact?: 
 
   // Gentle, never directive. Only what she chose to share can ever appear here.
   const lines: string[] = [];
-  if (s.fatigue === "high") lines.push(t("partner.tired"));
-  if (s.pain === "high") lines.push(t("partner.hardDay"));
-  if (s.mood === "low") lines.push(t("partner.needsSoftness"));
-  if (s.mood === "good" && s.fatigue !== "high" && s.pain !== "high") lines.push(t("partner.goodMood"));
-  if (s.wellbeing === "gentle" && lines.length === 0) lines.push(t("partner.gentleDay"));
-  if (s.wellbeing === "good" && lines.length === 0) lines.push(t("partner.goingWell"));
+  if (s.fatigue === "high") lines.push(t("partner.tired", { name }));
+  if (s.pain === "high") lines.push(t("partner.hardDay", { name }));
+  if (s.mood === "low") lines.push(t("partner.needsSoftness", { name }));
+  if (s.mood === "good" && s.fatigue !== "high" && s.pain !== "high") lines.push(t("partner.goodMood", { name }));
+  if (s.wellbeing === "gentle" && lines.length === 0) lines.push(t("partner.gentleDay", { name }));
+  if (s.wellbeing === "good" && lines.length === 0) lines.push(t("partner.goingWell", { name }));
   const soft = s.fatigue === "high" || s.pain === "high" || s.mood === "low" || s.wellbeing === "gentle";
   const facts: string[] = [];
-  if (s.cycle_day) facts.push(t("partner.cycleDay", { n: s.cycle_day }));
-  if (s.on_period) facts.push(t("partner.onPeriod"));
+  if (s.cycle_day) facts.push(t("partner.cycleDay", { n: s.cycle_day, name }));
+  if (s.on_period) facts.push(t("partner.onPeriod", { name }));
   if (s.avg_cycle) facts.push(t("partner.avgCycle", { n: s.avg_cycle }));
   if (s.sugar) facts.push(t(`partner.sugar.${s.sugar}`));
 
@@ -58,7 +58,7 @@ export function StatusCard({ name, compact = false }: { name: string; compact?: 
   return (
     <div className="grid gap-3">
       {lines.slice(0, compact ? 1 : undefined).map((l) => <p key={l} className={compact ? "font-display text-xl leading-snug" : "font-display text-2xl leading-snug"}>{l}</p>)}
-      {soft && !compact && <p className="text-muted">{t("partner.suggestion")}</p>}
+      {soft && !compact && <p className="text-muted">{t("partner.suggestion", { name })}</p>}
       {facts.length > 0 && (
         <ul className="flex flex-wrap gap-2 pt-1">
           {facts.slice(0, compact ? 2 : undefined).map((f) => <li key={f} className="chip !cursor-default">{f}</li>)}

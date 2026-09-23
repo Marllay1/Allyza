@@ -4,8 +4,10 @@ import { createClient } from "@/lib/supabase/client";
 import { deleteMessageAction, editMessageAction, markMessagesReadAction, sendMediaMessageAction, sendStickerMessageAction, sendTextMessageAction } from "@/actions/messages";
 import { AppIcon } from "@/components/icons";
 import { Avatar } from "@/components/Avatar";
+import { Portal } from "@/components/Portal";
 import { ErrorNote } from "@/components/Feedback";
 import { ReactionBar } from "@/components/ReactionBar";
+import { MessageMenu, PressTarget, type Anchor, type MenuAction } from "@/features/messaging/MessageMenu";
 import { Sticker } from "@/components/Sticker";
 import { STICKER_IDS, isStickerId, type StickerId } from "@/lib/stickers";
 import { formatDay } from "@/lib/format";
@@ -100,7 +102,8 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
   const [files, setFiles] = useState<File[]>([]);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ id: string; anchor: Anchor } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ErrCode | null>(null);
   const [typing, setTyping] = useState(false);
@@ -108,6 +111,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
   const [showJump, setShowJump] = useState(false);
   const [stickersOpen, setStickersOpen] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const typingCh = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null);
   const lastTypingSent = useRef(0);
@@ -171,10 +175,34 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
-    const onScroll = () => setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 500);
+    let lastTop = el.scrollTop;
+    let touching = false;
+    const onScroll = () => {
+      setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 500);
+      // Reading back through older messages: put the keyboard away so the composer settles at the bottom.
+      if (touching && el.scrollTop < lastTop - 6 && document.activeElement instanceof HTMLTextAreaElement) document.activeElement.blur();
+      lastTop = el.scrollTop;
+    };
+    const down = () => { touching = true; };
+    const up = () => { touching = false; };
     el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    el.addEventListener("touchstart", down, { passive: true });
+    el.addEventListener("touchend", up, { passive: true });
+    el.addEventListener("touchcancel", up, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      el.removeEventListener("touchstart", down);
+      el.removeEventListener("touchend", up);
+      el.removeEventListener("touchcancel", up);
+    };
   }, []);
+
+  useEffect(() => {
+    const ta = inputRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${Math.min(ta.scrollHeight, 128)}px`;
+  }, [text]);
 
   const onType = (v: string) => {
     setText(v);
@@ -236,6 +264,31 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
     setBusy(false);
   };
 
+  const openMenuFor = (m: ChatMessage, el: HTMLElement) => {
+    if (m.tmp || m.deleted_at) return;
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    const r = el.getBoundingClientRect();
+    setMenu({ id: m.id, anchor: { top: r.top, bottom: r.bottom, left: r.left, right: r.right } });
+  };
+  const menuMsg = menu ? byId.get(menu.id) ?? null : null;
+  const menuActions: MenuAction[] = menuMsg
+    ? [
+        "reply",
+        ...(menuMsg.kind === "text" ? (["copy"] as MenuAction[]) : []),
+        ...(menuMsg.author_id === me.id && menuMsg.kind === "text" ? (["edit"] as MenuAction[]) : []),
+        ...(menuMsg.author_id === me.id ? (["delete"] as MenuAction[]) : []),
+      ]
+    : [];
+  const runAction = (a: MenuAction) => {
+    const m = menuMsg;
+    setMenu(null);
+    if (!m) return;
+    if (a === "reply") setReplyTo(m);
+    else if (a === "copy") { if (m.body) navigator.clipboard?.writeText(m.body).catch(() => {}); }
+    else if (a === "edit") { if (m.author_id === me.id) setEditing({ id: m.id, body: m.body ?? "" }); }
+    else if (a === "delete") { if (m.author_id === me.id) setConfirmDelete(m.id); }
+  };
+
   const days = useMemo(() => {
     const out: { day: string; items: ChatMessage[] }[] = [];
     for (const m of messages) {
@@ -265,7 +318,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
       {hasMessages && (
         <>
           <div aria-hidden className="absolute inset-0 pointer-events-none" style={bgStyle} />
-          <div aria-hidden className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to bottom, color-mix(in srgb, var(--bg) 60%, transparent), color-mix(in srgb, var(--bg) 30%, transparent) 40%, color-mix(in srgb, var(--bg) 65%, transparent))" }} />
+          <div aria-hidden className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to bottom, color-mix(in srgb, var(--bg) 66%, transparent), color-mix(in srgb, var(--bg) 46%, transparent) 40%, color-mix(in srgb, var(--bg) 72%, transparent))" }} />
         </>
       )}
       <div ref={scrollerRef} className="relative flex-1 min-h-0 overflow-y-auto grid gap-1 content-start px-3 pb-3">
@@ -289,7 +342,8 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
                     {m.id === unreadDividerAt && (
                       <div className="w-full text-center my-2"><span className="chip !cursor-default !text-[0.68rem] !min-h-7 !px-3">{t("messaging.newMessages")}</span></div>
                     )}
-                    <div className={m.kind === "sticker" && !m.deleted_at ? "px-1" : `rounded-3xl px-4 py-2.5 border ${mine ? "bg-accent/18 border-accent/30 rounded-br-md" : "bg-surface2 border-line rounded-bl-md"} ${m.deleted_at ? "italic opacity-70" : ""}`}>
+                    <PressTarget disabled={!!editing || !!m.tmp || !!m.deleted_at} onLongPress={(el) => openMenuFor(m, el)} style={{ userSelect: "none" }}
+                      className={`${m.kind === "sticker" && !m.deleted_at ? "px-1" : `rounded-3xl px-4 py-2.5 border ${mine ? "bg-accent/18 border-accent/30 rounded-br-md" : "bg-surface2 border-line rounded-bl-md"} ${m.deleted_at ? "italic opacity-70" : ""}`} ${menu?.id === m.id ? "ring-2 ring-accent/60" : ""}`}>
                       {quoted && !m.deleted_at && (
                         <button type="button" onClick={() => document.getElementById(`msg-${quoted.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
                           className="block w-full text-left rounded-xl px-2.5 py-1.5 mb-1.5 border-l-2 border-accent bg-black/5 text-xs">
@@ -325,24 +379,10 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
                           {mine && m.id === lastMineId && <AppIcon name={read ? "readAll" : "check"} size={13} className={read ? "text-accent" : ""} />}
                         </div>
                       )}
-                    </div>
+                    </PressTarget>
                     {!m.deleted_at && !m.tmp && (
                       <>
-                        <ReactionBar targetType="message" targetId={m.id} reactions={reactions} myId={me.id} toggle={toggleReaction} />
-                        <div className="flex items-center gap-1 mt-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
-                          <button type="button" className="icon-btn !size-7 text-muted" aria-label={t("messaging.reply")} onClick={() => setReplyTo(m)}><AppIcon name="replyArrow" size={13} /></button>
-                          <button type="button" className="icon-btn !size-7 text-muted" aria-label={t("common.copy")} onClick={() => m.body && navigator.clipboard?.writeText(m.body).catch(() => {})}><AppIcon name="copy" size={13} /></button>
-                          {mine && (
-                            <button type="button" className="icon-btn !size-7 text-muted" aria-label={t("common.delete")}
-                              onClick={() => setOpenMenu(openMenu === m.id ? null : m.id)}><AppIcon name="trash" size={13} /></button>
-                          )}
-                        </div>
-                        {mine && openMenu === m.id && (
-                          <div className="flex gap-2 mt-1">
-                            {m.kind === "text" && <button className="chip !min-h-7 !px-2.5 !text-xs" onClick={() => { setEditing({ id: m.id, body: m.body ?? "" }); setOpenMenu(null); }}><AppIcon name="edit" size={12} /> {t("common.edit")}</button>}
-                            <button className="chip !min-h-7 !px-2.5 !text-xs text-danger" onClick={() => { if (confirm(t("common.confirmDelete"))) { deleteMessageAction(m.id); setOpenMenu(null); } }}><AppIcon name="trash" size={12} /> {t("common.delete")}</button>
-                          </div>
-                        )}
+                        <ReactionBar targetType="message" targetId={m.id} reactions={reactions} myId={me.id} toggle={toggleReaction} showAdd={false} />
                       </>
                     )}
                   </div>
@@ -365,7 +405,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
           onClick={() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })}><AppIcon name="down" size={18} /></button>
       )}
 
-      <div className="relative z-20 card !rounded-b-none border-b-0 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] grid gap-2">
+      <div className="relative z-20 shrink-0 border-t border-line px-2.5 pt-2 pb-[max(0.5rem,var(--sab,env(safe-area-inset-bottom)))] grid gap-1.5" style={{ background: "color-mix(in srgb, var(--surface) 92%, transparent)", backdropFilter: "blur(14px)" }}>
         <ErrorNote code={error} />
         {replyTo && (
           <div className="flex items-center gap-2 rounded-xl bg-surface2 px-3 py-2 text-sm">
@@ -412,31 +452,62 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
             <button type="button" className="btn btn-primary !px-4 shrink-0" onClick={sendVoice} disabled={busy} aria-label={t("common.send")}><AppIcon name="send" size={18} /></button>
           </div>
         ) : (
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-1.5">
             {!text.trim() && files.length === 0 && (
-              <>
-                <label className="icon-btn cursor-pointer shrink-0" aria-label={t("messaging.attachImage")}>
+              <div className="flex items-center shrink-0">
+                <label className="icon-btn !size-10 cursor-pointer" aria-label={t("messaging.attachImage")}>
                   <AppIcon name="attach" size={20} />
                   <input type="file" accept="image/*" multiple className="sr-only" onChange={(e) => { const list = Array.from(e.target.files ?? []).filter(isAcceptedImage); setFiles((f) => [...f, ...list].slice(0, 6)); e.target.value = ""; }} />
                 </label>
-                <button type="button" className={`icon-btn shrink-0 ${stickersOpen ? "bg-accent/20 text-accent" : ""}`} aria-label={t("messaging.stickers")} aria-pressed={stickersOpen} onClick={() => setStickersOpen((o) => !o)}>
+                <button type="button" className={`icon-btn !size-10 ${stickersOpen ? "bg-accent/20 text-accent" : ""}`} aria-label={t("messaging.stickers")} aria-pressed={stickersOpen} onClick={() => setStickersOpen((o) => !o)}>
                   <AppIcon name="sparkle" size={20} />
                 </button>
-              </>
+              </div>
             )}
-            <textarea className="field !min-h-12 max-h-40" rows={1} value={text} maxLength={4000}
+            <textarea ref={inputRef} className="field !min-h-11 !py-2.5 !rounded-3xl !resize-none flex-1 min-w-0 max-h-32" rows={1} value={text} maxLength={4000}
               placeholder={t("messaging.placeholder")} aria-label={t("messaging.placeholder")}
               onChange={(e) => onType(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !("ontouchstart" in window)) { e.preventDefault(); send(); } }} />
             {text.trim() || files.length > 0 ? (
-              <button type="button" className="btn btn-primary !px-4 shrink-0" onClick={send} disabled={busy} aria-label={t("common.send")}><AppIcon name="send" size={20} /></button>
+              <button type="button" className="btn btn-primary !min-h-10 !px-3.5 shrink-0" onClick={send} disabled={busy} aria-label={t("common.send")}><AppIcon name="send" size={19} /></button>
             ) : recorder.supported ? (
-              <button type="button" className="icon-btn shrink-0" aria-label={t("messaging.recordVoice")} onClick={recorder.start}><AppIcon name="mic" size={20} /></button>
+              <button type="button" className="icon-btn !size-10 shrink-0" aria-label={t("messaging.recordVoice")} onClick={recorder.start}><AppIcon name="mic" size={20} /></button>
             ) : null}
           </div>
         )}
         {recorder.state === "denied" && <p className="text-xs text-danger inline-flex items-center gap-1.5"><AppIcon name="micOff" size={13} /> {t("messaging.micDenied")}</p>}
       </div>
+
+      {menu && menuMsg && (
+        <MessageMenu
+          anchor={menu.anchor} mine={menuMsg.author_id === me.id} actions={menuActions}
+          myReactions={new Set(reactions.filter((r) => r.target_id === menuMsg.id && r.author_id === me.id).map((r) => r.emoji))}
+          onReact={(emoji) => { toggleReaction("message", menuMsg.id, emoji); setMenu(null); }}
+          onAction={runAction} onClose={() => setMenu(null)}
+        />
+      )}
+
+      {confirmDelete && (
+        <Portal>
+          <div role="alertdialog" aria-modal="true" aria-labelledby="del-msg-h" className="fixed inset-0 z-50 grid place-items-center p-6 bg-black/50 backdrop-blur-sm" onClick={() => setConfirmDelete(null)}>
+            <div className="card w-full max-w-xs p-6 text-center grid gap-4 pop-in" onClick={(e) => e.stopPropagation()}>
+              <div>
+                <h2 id="del-msg-h" className="text-2xl">{t("messaging.deleteTitle")}</h2>
+                <p className="text-sm text-muted mt-1">{t("messaging.deleteNote")}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" className="btn" onClick={() => setConfirmDelete(null)}>{t("common.cancel")}</button>
+                <button type="button" className="btn btn-primary" onClick={async () => {
+                  const id = confirmDelete; setConfirmDelete(null);
+                  const r = await deleteMessageAction(id);
+                  if (r.ok) setMessages((cur) => cur.map((x) => (x.id === id ? { ...x, deleted_at: new Date().toISOString(), body: null, storage_path: null } : x)));
+                  else setError(r.error);
+                }}>{t("common.delete")}</button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
     </div>
   );
 }

@@ -55,7 +55,7 @@ export function NameForm({ name }: { name: string }) {
   );
 }
 
-export function SharingForm({ initial, herPartnerLinked }: { initial: Sharing; herPartnerLinked: boolean }) {
+export function SharingForm({ initial, herPartnerLinked, partnerName }: { initial: Sharing; herPartnerLinked: boolean; partnerName: string }) {
   const t = useT();
   const router = useRouter();
   const [s, setS] = useState(initial);
@@ -75,14 +75,14 @@ export function SharingForm({ initial, herPartnerLinked }: { initial: Sharing; h
 
   return (
     <div className="grid gap-4">
-      {!herPartnerLinked && <Notice>{t("sharing.noPartner")}</Notice>}
+      {!herPartnerLinked && <Notice>{t("sharing.noPartner", { name: partnerName })}</Notice>}
       <div className="card px-5 divide-y divide-line">
         {SHARING_KEYS.map((k) => (
           <Switch key={k} checked={s[k]} onChange={(v) => save({ [k]: v })} label={t(`sharing.items.${k}`)} hint={t(`sharing.hints.${k}`)} />
         ))}
       </div>
       <ErrorNote code={error} />
-      <p className="text-sm text-muted text-center" role="status">{count === 0 ? t("sharing.nothing") : t("sharing.count", { n: count })}</p>
+      <p className="text-sm text-muted text-center" role="status">{count === 0 ? t("sharing.nothing", { name: partnerName }) : t("sharing.count", { n: count })}</p>
       {count > 0 && (
         <button className="btn btn-danger" disabled={pending} onClick={() => save(Object.fromEntries(SHARING_KEYS.map((k) => [k, false])) as Partial<Sharing>)}>
           {t("sharing.revokeAll")}

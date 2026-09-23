@@ -35,23 +35,31 @@ export function AppShell({ userId, role, softMode, initialUnread, children }: Pr
   const [collapsed, setCollapsed] = useState(false);
   const scroll = useRef({ y: 0, timer: 0 as unknown as ReturnType<typeof setTimeout>, holdUntil: 0 });
 
-  // Live badges. Rows carry only a "kind": never any content.
-  useEffect(() => {
-    const supabase = createClient();
-    const ch = supabase
-      .channel(`notif:${userId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` }, (p) => {
-        const k = (p.new as { kind: Kind }).kind;
-        setUnread((u) => ({ ...u, [k]: (u[k] ?? 0) + 1 }));
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [userId]);
-
   const markRead = useCallback((kinds: Kind[]) => {
     setUnread((u) => { const next = { ...u }; kinds.forEach((k) => (next[k] = 0)); return next; });
     markNotificationsReadAction(kinds);
   }, []);
+
+  // Live badges. Rows carry only a "kind": never any content. If that content's own page is already
+  // open and visible, it is being read right now, so it is marked read instead of raising a badge.
+  const pathRef = useRef(path);
+  useEffect(() => { pathRef.current = path; }, [path]);
+  useEffect(() => {
+    const supabase = createClient();
+    const viewing: Record<Kind, string> = {
+      journal: "/us/journal", media: "/us/memories", little: "/us/little",
+      surprise: "/us/surprises", refuge: "/refuge/messages", message: "/messages/chat",
+    };
+    const ch = supabase
+      .channel(`notif:${userId}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` }, (p) => {
+        const k = (p.new as { kind: Kind }).kind;
+        if (document.visibilityState === "visible" && pathRef.current === viewing[k]) { markRead([k]); return; }
+        setUnread((u) => ({ ...u, [k]: (u[k] ?? 0) + 1 }));
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [userId, markRead]);
 
   // The navbar contracts while the page moves and comes back when it rests. One passive listener,
   // state only changes on transitions, so scrolling never re-renders on every frame.

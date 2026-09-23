@@ -13,7 +13,8 @@ export type ErrCode =
   | "wrong_pin"
   | "locked"
   | "weak_password"
-  | "credentials";
+  | "credentials"
+  | "busy";
 
 export type Result<T = undefined> =
   | ({ ok: true } & (T extends undefined ? object : { data: T }))

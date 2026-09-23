@@ -20,7 +20,8 @@ import type { ErrCode } from "@/lib/action-utils";
 type Kind = (typeof SURPRISE_KINDS)[number];
 type Unlock = (typeof SURPRISE_UNLOCKS)[number];
 export type Received = { id: string; kind: Kind; unlock: Unlock; unlock_at: string | null; created_at: string; opened_at: string | null; locked: boolean; title: string | null; body: string | null; storage_path: string | null };
-export type Sent = { id: string; kind: Kind; unlock: Unlock; unlock_at: string | null; created_at: string; opened_at: string | null; title: string };
+export type Sent = { id: string; kind: Kind; unlock: Unlock; unlock_at: string | null; created_at: string; opened_at: string | null; title: string; body: string | null; storage_path: string | null };
+type SentPreview = { kind: Kind; unlock: Unlock; unlock_at: string | null; title: string; body: string; storage_path: string | null; justSent: boolean };
 type Revealed = { title: string; body: string; storage_path: string | null; kind: string };
 
 const local = (y: number, m: number, d: number, h: number) => new Date(y, m, d, h, 0, 0, 0);
@@ -42,6 +43,7 @@ export function SurprisesClient({ coupleId, received, sent, otherName, canSend }
   const [opening, setOpening] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<Revealed | null>(null);
   const [compose, setCompose] = useState(false);
+  const [preview, setPreview] = useState<SentPreview | null>(null);
 
   // compose state
   const [kind, setKind] = useState<Kind>("love");
@@ -66,7 +68,7 @@ export function SurprisesClient({ coupleId, received, sent, otherName, canSend }
   const unopened = useMemo(() => received.filter((s) => !s.opened_at), [received]);
   const ready = unopened.filter((s) => !s.locked);
   const opened = received.filter((s) => s.opened_at);
-  const urls = useSignedUrls([revealed?.storage_path, ...opened.map((o) => o.storage_path)].filter(Boolean) as string[]);
+  const urls = useSignedUrls([revealed?.storage_path, preview?.storage_path, ...opened.map((o) => o.storage_path)].filter(Boolean) as string[]);
   const today = toISODate();
 
   const open = (s: Received) => {
@@ -98,6 +100,7 @@ export function SurprisesClient({ coupleId, received, sent, otherName, canSend }
       const at = unlockAtFor(unlock, date);
       const r = await createSurpriseAction({ kind, title, body, unlock, unlockAt: at, path });
       if (!r.ok) { setError(r.error); return; }
+      setPreview({ kind, unlock, unlock_at: at ?? null, title: title.trim(), body: body.trim(), storage_path: path ?? null, justSent: true });
       setTitle(""); setBody(""); setFile(null); setDate(""); setUnlock("anytime"); setCompose(false);
       router.refresh();
     });
@@ -206,15 +209,32 @@ export function SurprisesClient({ coupleId, received, sent, otherName, canSend }
             {sent.map((s) => (
               <li key={s.id} className="card p-4 flex items-center gap-3">
                 <span className="grid place-items-center size-10 rounded-2xl bg-surface2 text-accent"><AppIcon name={s.kind === "memory" ? "memoryKind" : s.kind} size={18} /></span>
-                <div className="flex-1 min-w-0">
+                <button type="button" className="flex-1 min-w-0 text-left" aria-label={t("surprises.previewOpen")}
+                  onClick={() => setPreview({ kind: s.kind, unlock: s.unlock, unlock_at: s.unlock_at, title: s.title, body: s.body ?? "", storage_path: s.storage_path, justSent: false })}>
                   <p className="truncate">{s.title || t(`surprises.kinds.${s.kind}`)}</p>
                   <p className="text-xs text-muted">{s.opened_at ? t("surprises.statusOpened") : `${t("surprises.statusWaiting")} · ${when(s)}`}</p>
-                </div>
+                </button>
                 <button className="icon-btn text-muted" aria-label={t("common.delete")} onClick={() => confirm(t("common.confirmDelete")) && start(async () => { await deleteSurpriseAction(s.id); router.refresh(); })}><AppIcon name="trash" size={18} /></button>
               </li>
             ))}
           </ul>
         </section>
+      )}
+
+      {preview && (
+        <Portal>
+          <div role="dialog" aria-modal="true" aria-label={t("surprises.previewOpen")} className="fixed inset-0 z-50 grid place-items-center p-5 bg-black/55 backdrop-blur-md" onClick={() => setPreview(null)}>
+            <div className="card w-full max-w-md p-7 pop-in max-h-[88dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <p className="eyebrow inline-flex items-center gap-1.5 mb-3"><AppIcon name="send" size={13} /> {preview.justSent ? t("surprises.youSent", { name: otherName }) : t("surprises.sentTo", { name: otherName })}</p>
+              <div className="flex items-center gap-2 text-xs text-muted mb-3"><AppIcon name={preview.kind === "memory" ? "memoryKind" : preview.kind} size={14} /> {t(`surprises.kinds.${preview.kind}`)}</div>
+              {preview.title && <h2 className="text-3xl mb-2">{preview.title}</h2>}
+              <p className="font-display text-2xl leading-snug whitespace-pre-wrap break-words">{preview.body}</p>
+              {preview.storage_path && urls[preview.storage_path] && <img src={urls[preview.storage_path]} alt="" className="mt-4 rounded-2xl w-full max-h-72 object-cover" />}
+              <p className="text-xs text-muted mt-5 inline-flex items-center gap-1.5"><AppIcon name={preview.unlock_at && new Date(preview.unlock_at) > new Date() ? "clock" : preview.unlock} size={13} /> {when(preview)}</p>
+              <button className="btn btn-primary w-full mt-6" onClick={() => setPreview(null)}>{t("surprises.close")}</button>
+            </div>
+          </div>
+        </Portal>
       )}
 
       {/* the opening moment */}

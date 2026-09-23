@@ -4,6 +4,7 @@ import { NicknameForm } from "@/components/NicknameForm";
 import { NameForm, ThemePicker } from "@/components/SettingsForms";
 import { PageHeader, Section, TileLink } from "@/components/ui";
 import { getT } from "@/lib/i18n/server";
+import { getPartner } from "@/lib/nickname";
 import { requireViewer } from "@/lib/session";
 import { createClient } from "@/lib/supabase/server";
 
@@ -14,9 +15,9 @@ export default async function SettingsPage() {
   const supabase = await createClient();
 
   const otherId = v.couple ? (isHer ? v.couple.partnerId : v.couple.herId) : null;
-  const [{ data: me }, { data: other }, { data: myNick }] = await Promise.all([
+  const [{ data: me }, partner, { data: myNick }] = await Promise.all([
     supabase.from("profiles").select("avatar_path").eq("id", v.id).maybeSingle(),
-    otherId ? supabase.from("profiles").select("display_name").eq("id", otherId).maybeSingle() : Promise.resolve({ data: null }),
+    getPartner(),
     otherId ? supabase.from("nicknames").select("nickname").eq("target_id", otherId).maybeSingle() : Promise.resolve({ data: null }),
   ]);
 
@@ -38,7 +39,7 @@ export default async function SettingsPage() {
       </Section>
       {v.couple?.partnerId && (
         <Section title={t("nicknameSettings.title")}>
-          <NicknameForm initial={myNick?.nickname ?? ""} partnerDefaultName={other?.display_name || t("couple.partnerFallback")} />
+          <NicknameForm initial={myNick?.nickname ?? ""} partnerDefaultName={partner?.displayName ?? t("couple.partnerFallback")} />
         </Section>
       )}
       <div className="grid gap-3">

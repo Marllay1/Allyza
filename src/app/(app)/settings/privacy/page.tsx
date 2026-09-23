@@ -1,11 +1,13 @@
 import { IconBadge, PageHeader, Section } from "@/components/ui";
 import { getT } from "@/lib/i18n/server";
+import { getPartner } from "@/lib/nickname";
 import { requireViewer } from "@/lib/session";
 
 export default async function PrivacyPage() {
   const v = await requireViewer();
   const { t } = await getT();
-  const points = v.role === "her" ? t.arr("privacy.pointsHer") : t.arr("privacy.pointsPartner");
+  const name = (await getPartner())?.name ?? t("couple.partnerFallback");
+  const points = (v.role === "her" ? t.arr("privacy.pointsHer") : t.arr("privacy.pointsPartner")).map((p) => p.replaceAll("{name}", name));
   const rooms = [
     { icon: "her", tone: "rose", name: v.role === "her" ? t("nav.her") : t("privacy.herRoom"), text: t("privacy.her") },
     { icon: "refuge", tone: "mauve", name: t("nav.refuge"), text: t("privacy.refuge") },

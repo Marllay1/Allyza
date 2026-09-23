@@ -7,6 +7,7 @@ import { Avatar } from "@/components/Avatar";
 import { ErrorNote } from "@/components/Feedback";
 import { EntryActions } from "@/components/ui";
 import { ReactionBar } from "@/components/ReactionBar";
+import { useUnread } from "@/components/AppShell";
 import { formatDay } from "@/lib/format";
 import { isAcceptedImage, prepareImage } from "@/lib/image";
 import { useI18n } from "@/lib/i18n/provider";
@@ -38,6 +39,10 @@ export function NotebookClient({ coupleId, myId, initialPages, initialMedia, ini
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ErrCode | null>(null);
   const { reactions, toggle } = useReactions(coupleId, myId, initialReactions);
+  const { markRead } = useUnread();
+
+  // Opening the notebook is what reads it: persisted server-side, so it survives reloads and other devices.
+  useEffect(() => markRead(["journal"]), [markRead]);
 
   const urls = useSignedUrls(media.map((m) => m.storage_path));
   const byEntry = useMemo(() => { const m = new Map<string, PageMedia>(); for (const x of media) if (x.entry_id) m.set(x.entry_id, x); return m; }, [media]);
@@ -48,6 +53,7 @@ export function NotebookClient({ coupleId, myId, initialPages, initialMedia, ini
       .channel(`notebook:${coupleId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "journal_entries", filter: `couple_id=eq.${coupleId}` }, (p) => {
         const e = p.new as Page; setPages((cur) => (cur.some((x) => x.id === e.id) ? cur : [e, ...cur]));
+        if (e.author_id !== myId) markRead(["journal"]);
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "journal_entries", filter: `couple_id=eq.${coupleId}` }, (p) => {
         const e = p.new as Page; setPages((cur) => cur.map((x) => (x.id === e.id ? e : x)));
@@ -61,7 +67,7 @@ export function NotebookClient({ coupleId, myId, initialPages, initialMedia, ini
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [coupleId]);
+  }, [coupleId, myId, markRead]);
 
   const resetComposer = () => { setComposing(false); setEditingId(null); setTitle(""); setBody(""); setMood(null); setFile(null); setError(null); };
 

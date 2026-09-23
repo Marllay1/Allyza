@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/action-utils";
 import { getAuthUser } from "@/lib/supabase/request";
 
-export type PushKind = "journal" | "media" | "refuge" | "little" | "surprise" | "message";
+export type PushKind = "journal" | "media" | "refuge" | "little" | "surprise" | "message" | "call";
 
 /**
  * Sends the OTHER member of my couple a contentless "something new" ping.
@@ -29,9 +29,10 @@ export async function pingPartner(kind: PushKind) {
     const target = couple.her_id === user.id ? couple.partner_id : couple.her_id;
     if (!target) return;
 
-    const prefKey = { journal: "notify_journal", media: "notify_media", refuge: "notify_refuge", little: "notify_little", surprise: "notify_surprise", message: "notify_message" }[kind];
+    // An incoming call is time-sensitive and has no opt-out toggle; every other kind honours its preference.
+    const prefKey = { journal: "notify_journal", media: "notify_media", refuge: "notify_refuge", little: "notify_little", surprise: "notify_surprise", message: "notify_message", call: null }[kind];
     const { data: prefs } = await admin.from("user_preferences").select("*").eq("user_id", target).maybeSingle();
-    if (!prefs || prefs[prefKey] === false) return;
+    if (!prefs || (prefKey && prefs[prefKey] === false)) return;
 
     const { data: subs } = await admin.from("push_subscriptions").select("id, endpoint, p256dh, auth").eq("user_id", target);
     if (!subs?.length) return;

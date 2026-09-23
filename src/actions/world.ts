@@ -69,17 +69,17 @@ export async function createSurpriseAction(input: z.infer<typeof surpriseInput>)
   if (dated && !p.data.unlockAt) return fail("invalid");
   if (p.data.unlockAt && new Date(p.data.unlockAt).getTime() > Date.now() + 5 * 365 * 86_400_000) return fail("invalid");
   if (p.data.path && !okPath(p.data.path, c.couple.id)) return fail("forbidden");
-  const { error } = await c.supabase.from("surprises").insert({
+  const { data: created, error } = await c.supabase.from("surprises").insert({
     couple_id: c.couple.id, kind: p.data.kind, title: p.data.title, body: p.data.body,
     unlock: p.data.unlock, unlock_at: dated ? p.data.unlockAt : null, storage_path: p.data.path ?? null,
-  });
+  }).select("id").single();
   if (error) {
     if (p.data.path) await c.supabase.storage.from("couple-media").remove([p.data.path]);
     return fail("generic");
   }
   void pingPartner("surprise");
   revalidatePath("/us/surprises");
-  return ok();
+  return ok({ id: created?.id ?? null });
 }
 
 /** Reveals the content (the database refuses if the date has not arrived). */

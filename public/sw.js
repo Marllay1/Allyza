@@ -56,6 +56,7 @@ const COPY = {
     little: "Une petite attention vous attend",
     surprise: "Une petite surprise vous attend",
     message: "Vous avez un nouveau message",
+    call: "Vous avez un appel entrant",
   },
   en: {
     journal: "Someone wrote in your journal",
@@ -64,9 +65,10 @@ const COPY = {
     little: "A little something is waiting for you",
     surprise: "A little surprise is waiting for you",
     message: "You have a new message",
+    call: "You have an incoming call",
   },
 };
-const TARGET = { journal: "/us/journal", media: "/us/memories", refuge: "/refuge/messages", little: "/us/little", surprise: "/us/surprises", message: "/messages" };
+const TARGET = { journal: "/us/journal", media: "/us/memories", refuge: "/refuge/messages", little: "/us/little", surprise: "/us/surprises", message: "/messages", call: "/messages" };
 
 self.addEventListener("push", (e) => {
   let data = {};
