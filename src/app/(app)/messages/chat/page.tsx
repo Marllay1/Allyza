@@ -46,7 +46,7 @@ export default async function MessagesChatPage() {
         tone={otherTone}
         actions={<>
           <ChatInfoButton name={otherName} avatar={otherAvatar} tone={otherTone} photos={photos} />
-          <CallButtons name={otherName} avatar={otherAvatar} tone={otherTone} />
+          <CallButtons />
         </>}
       />
       <ChatClient

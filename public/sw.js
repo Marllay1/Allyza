@@ -83,6 +83,9 @@ self.addEventListener("push", (e) => {
       icon: "/icons/icon-192.png",
       badge: "/icons/favicon-48.png",
       tag: "allyza-" + kind,
+      // A call is urgent: keep it on screen until it's answered or dismissed, and buzz.
+      requireInteraction: kind === "call",
+      vibrate: kind === "call" ? [300, 150, 300, 150, 300] : undefined,
       data: { url: TARGET[kind] },
     }),
   );
