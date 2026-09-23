@@ -4,12 +4,14 @@ import { Avatar } from "@/components/Avatar";
 import { AppIcon } from "@/components/icons";
 import { Portal } from "@/components/Portal";
 import { useI18n } from "@/lib/i18n/provider";
+import { PhotoViewer } from "@/features/messaging/PhotoViewer";
 
 /** Conversation info: who this is, and the shared photos so far — a calm alternative to
  * scrolling back through the whole history to find one. */
 export function ChatInfoButton({ name, avatar, tone, photos }: { name: string; avatar: string | null; tone: "rose" | "gold"; photos: string[] }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
+  const [viewing, setViewing] = useState<number | null>(null);
   return (
     <>
       <button type="button" className="icon-btn" aria-label={t("messaging.info")} onClick={() => setOpen(true)}>
@@ -33,7 +35,9 @@ export function ChatInfoButton({ name, avatar, tone, photos }: { name: string; a
               ) : (
                 <div className="grid grid-cols-3 gap-1.5">
                   {photos.map((url, i) => (
-                    <img key={i} src={url} alt="" loading="lazy" className="aspect-square w-full rounded-xl object-cover" />
+                    <button key={i} type="button" className="block aspect-square w-full overflow-hidden rounded-2xl bg-surface2" onClick={() => setViewing(i)} aria-label={t("messaging.aPhoto")}>
+                      <img src={url} alt="" loading="lazy" className="size-full object-cover" />
+                    </button>
                   ))}
                 </div>
               )}
@@ -41,6 +45,7 @@ export function ChatInfoButton({ name, avatar, tone, photos }: { name: string; a
           </div>
         </Portal>
       )}
+      {viewing !== null && <PhotoViewer urls={photos} index={viewing} onIndex={setViewing} onClose={() => setViewing(null)} />}
     </>
   );
 }

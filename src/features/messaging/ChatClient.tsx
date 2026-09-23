@@ -16,6 +16,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import type { Translator } from "@/lib/i18n/translate";
 import { useReactions, type Reaction } from "@/lib/use-reactions";
 import { useSignedUrls } from "@/lib/use-signed-urls";
+import { PhotoViewer } from "@/features/messaging/PhotoViewer";
 import { useVoiceRecorder } from "@/lib/use-voice-recorder";
 import { useUnread } from "@/components/AppShell";
 import type { ErrCode } from "@/lib/action-utils";
@@ -110,6 +111,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
   const [theirCursor, setTheirCursor] = useState<string | null>(initialCursors.theirs);
   const [showJump, setShowJump] = useState(false);
   const [stickersOpen, setStickersOpen] = useState(false);
+  const [viewer, setViewer] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -125,9 +127,14 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
     return idx >= 0 ? initialMessages[idx].id : null;
   }, [initialMessages, initialCursors.mine, me.id]);
 
+  const messagesRef = useRef(messages);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+
   const byId = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
   const mediaPaths = useMemo(() => messages.filter((m) => (m.kind === "image" || m.kind === "audio") && m.storage_path).map((m) => m.storage_path!), [messages]);
   const urls = useSignedUrls(mediaPaths);
+  const photoItems = useMemo(() => messages.filter((m) => m.kind === "image" && !m.deleted_at && m.storage_path && urls[m.storage_path]), [messages, urls]);
+  const viewerIdx = viewer ? photoItems.findIndex((m) => m.id === viewer) : -1;
 
   const upsert = useCallback((m: ChatMessage) => {
     setMessages((cur) => {
@@ -167,7 +174,21 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
     }).subscribe();
     typingCh.current = tCh;
 
-    return () => { supabase.removeChannel(data); supabase.removeChannel(tCh); typingCh.current = null; if (typingTimer.current) clearTimeout(typingTimer.current); };
+    // A phone that slept or lost the network missed the live events: fetch what arrived meanwhile.
+    const catchUp = async () => {
+      if (document.visibilityState !== "visible") return;
+      const known = messagesRef.current.filter((m) => !m.tmp).map((m) => m.created_at).sort().at(-1);
+      let q = supabase.from("messages").select("id, author_id, kind, body, storage_path, duration_ms, reply_to, edited_at, deleted_at, created_at").order("created_at", { ascending: true }).limit(100);
+      if (known) q = q.gt("created_at", known);
+      const { data: fresh } = await q;
+      if (!fresh?.length) return;
+      fresh.forEach((m) => upsert(m as ChatMessage));
+      if (fresh.some((m) => m.author_id !== me.id)) doMarkRead();
+    };
+    document.addEventListener("visibilitychange", catchUp);
+    window.addEventListener("online", catchUp);
+
+    return () => { document.removeEventListener("visibilitychange", catchUp); window.removeEventListener("online", catchUp); supabase.removeChannel(data); supabase.removeChannel(tCh); typingCh.current = null; if (typingTimer.current) clearTimeout(typingTimer.current); };
   }, [coupleId, me.id, other.id, upsert, doMarkRead]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [messages.length, typing]);
@@ -332,19 +353,27 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
         {days.map(({ day, items }) => (
           <div key={day} className="grid gap-1.5 py-2">
             <div className="eyebrow text-center sticky top-0 z-10 py-1">{formatDay(day, locale, { weekday: "long", day: "numeric", month: "long" })}</div>
-            {items.map((m) => {
+            {items.map((m, ix) => {
+              // Photos sent together (same sender, within two minutes) share one card, like a chat gallery.
+              const isImg = (x?: ChatMessage) => !!x && x.kind === "image" && !x.deleted_at && !x.tmp && !!x.storage_path;
+              const near = (a: ChatMessage, b: ChatMessage) => isImg(a) && isImg(b) && a.author_id === b.author_id && Date.parse(b.created_at) - Date.parse(a.created_at) < 120_000;
+              if (ix > 0 && near(items[ix - 1], m)) return null;
+              const group = [m];
+              if (isImg(m)) for (let k = ix + 1; k < items.length && near(items[k - 1], items[k]); k++) group.push(items[k]);
+              const photoCard = isImg(m);
+              const last = group[group.length - 1];
               const mine = m.author_id === me.id;
               const quoted = m.reply_to ? byId.get(m.reply_to) : null;
-              const read = mine && !!theirCursor && m.created_at <= theirCursor;
+              const read = mine && !!theirCursor && last.created_at <= theirCursor;
               return (
                 <div key={m.id} id={`msg-${m.id}`} className={`flex gap-2 items-end ${mine ? "flex-row-reverse" : ""} ${m.tmp ? "opacity-60" : ""}`}>
                   {!mine && <Avatar path={other.avatar} tone={other.tone} size={26} className="mb-1" />}
                   <div className={`group relative max-w-[78%] flex flex-col ${mine ? "items-end" : "items-start"}`}>
-                    {m.id === unreadDividerAt && (
+                    {group.some((g) => g.id === unreadDividerAt) && (
                       <div className="w-full text-center my-2"><span className="chip !cursor-default !text-[0.68rem] !min-h-7 !px-3">{t("messaging.newMessages")}</span></div>
                     )}
-                    <PressTarget disabled={!!editing || !!m.tmp || !!m.deleted_at} onLongPress={(el) => openMenuFor(m, el)} style={{ userSelect: "none" }}
-                      className={`${m.kind === "sticker" && !m.deleted_at ? "px-1" : `rounded-3xl px-4 py-2.5 border ${mine ? "bg-accent/18 border-accent/30 rounded-br-md" : "bg-surface2 border-line rounded-bl-md"} ${m.deleted_at ? "italic opacity-70" : ""}`} ${menu?.id === m.id ? "ring-2 ring-accent/60" : ""}`}>
+                    <PressTarget disabled={!!editing || !!m.tmp || !!m.deleted_at || photoCard} onLongPress={(el) => openMenuFor(m, el)} style={{ userSelect: "none" }}
+                      className={`${(m.kind === "sticker" && !m.deleted_at) || photoCard ? "px-1" : `rounded-3xl px-4 py-2.5 border ${mine ? "bg-accent/18 border-accent/30 rounded-br-md" : "bg-surface2 border-line rounded-bl-md"} ${m.deleted_at ? "italic opacity-70" : ""}`} ${menu?.id === m.id ? "ring-2 ring-accent/60" : ""}`}>
                       {quoted && !m.deleted_at && (
                         <button type="button" onClick={() => document.getElementById(`msg-${quoted.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
                           className="block w-full text-left rounded-xl px-2.5 py-1.5 mb-1.5 border-l-2 border-accent bg-black/5 text-xs">
@@ -366,10 +395,25 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
                         <p className="whitespace-pre-wrap break-words">{m.body}</p>
                       ) : m.kind === "sticker" ? (
                         isStickerId(m.body ?? "") ? <Sticker id={m.body as StickerId} size={84} /> : null
+                      ) : photoCard ? (
+                        <div className={`grid gap-1.5 w-[min(72vw,19rem)] ${group.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
+                          {group.slice(0, 4).map((g, gi) => {
+                            const more = gi === 3 && group.length > 4 ? group.length - 4 : 0;
+                            return (
+                              <PressTarget key={g.id} onLongPress={(el) => openMenuFor(g, el)} className={`relative overflow-hidden rounded-2xl bg-surface2 ${group.length === 1 ? "" : "aspect-square"} ${menu?.id === g.id ? "ring-2 ring-accent/60" : ""}`}>
+                                {urls[g.storage_path!] ? (
+                                  <button type="button" className="block size-full" onClick={() => setViewer(g.id)} aria-label={t("messaging.aPhoto")}>
+                                    <img src={urls[g.storage_path!]} alt={t("messaging.aPhoto")} loading="lazy" draggable={false}
+                                      className={`w-full object-cover ${group.length === 1 ? "max-h-96 min-h-40" : "size-full"}`} />
+                                    {more > 0 && <span className="absolute inset-0 grid place-items-center bg-black/45 text-white text-2xl font-display">+{more}</span>}
+                                  </button>
+                                ) : <div className="w-full aspect-square animate-pulse" />}
+                              </PressTarget>
+                            );
+                          })}
+                        </div>
                       ) : m.kind === "image" ? (
-                        m.storage_path && urls[m.storage_path] ? (
-                          <img src={urls[m.storage_path]} alt={t("messaging.aPhoto")} loading="lazy" className="rounded-2xl max-w-full max-h-72 object-cover" />
-                        ) : <div className="w-40 aspect-square rounded-2xl bg-surface animate-pulse" />
+                        <div className="w-40 aspect-square rounded-2xl bg-surface animate-pulse" />
                       ) : m.storage_path ? (
                         <AudioPlayer url={urls[m.storage_path]} durationMs={m.duration_ms} mine={mine} />
                       ) : null}
@@ -377,13 +421,13 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
                         <div className={`flex items-center gap-1 mt-1 text-[0.62rem] opacity-70 ${mine ? "justify-end" : ""}`}>
                           {m.edited_at && <span>{t("journal.edited")}</span>}
                           <span>{time(m.created_at)}</span>
-                          {mine && m.id === lastMineId && <AppIcon name={read ? "readAll" : "check"} size={13} className={read ? "text-accent" : ""} />}
+                          {mine && last.id === lastMineId && <AppIcon name={read ? "readAll" : "check"} size={13} className={read ? "text-accent" : ""} />}
                         </div>
                       )}
                     </PressTarget>
                     {!m.deleted_at && !m.tmp && (
                       <>
-                        <ReactionBar targetType="message" targetId={m.id} reactions={reactions} myId={me.id} toggle={toggleReaction} showAdd={false} />
+                        {group.map((g) => <ReactionBar key={g.id} targetType="message" targetId={g.id} reactions={reactions} myId={me.id} toggle={toggleReaction} showAdd={false} />)}
                       </>
                     )}
                   </div>
@@ -392,6 +436,9 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
             })}
           </div>
         ))}
+        {viewerIdx >= 0 && (
+          <PhotoViewer urls={photoItems.map((m) => urls[m.storage_path!])} index={viewerIdx} onIndex={(i) => setViewer(photoItems[i].id)} onClose={() => setViewer(null)} />
+        )}
         {typing && (
           <p className="text-sm text-muted italic px-2 inline-flex items-center gap-2" role="status" aria-live="polite">
             <Avatar path={other.avatar} tone={other.tone} size={18} />

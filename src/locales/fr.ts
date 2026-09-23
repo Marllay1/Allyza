@@ -1206,6 +1206,7 @@ export const fr = {
     newMessages: "Nouveaux messages",
     deleted: "Message supprimé",
     aPhoto: "Une photo",
+    savePhoto: "Enregistrer la photo",
     aVoiceNote: "Un message vocal",
     aSticker: "Un sticker",
     reply: "Répondre",

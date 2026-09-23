@@ -1208,6 +1208,7 @@ export const en: Dict = {
     newMessages: "New messages",
     deleted: "Message deleted",
     aPhoto: "A photo",
+    savePhoto: "Save photo",
     aVoiceNote: "A voice note",
     aSticker: "A sticker",
     reply: "Reply",

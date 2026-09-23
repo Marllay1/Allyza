@@ -4,7 +4,7 @@
  *   • Pages, API calls, Supabase traffic, signed photo URLs are NEVER cached,
  *     so no health data or private photo ever lands in Cache Storage.
  * Push payloads carry a "kind" and a language only — never message content. */
-const VERSION = "allyza-v4";
+const VERSION = "allyza-v5";
 const SHELL = ["/offline", "/icons/icon-192.png", "/icons/icon-512.png", "/brand/mark-dark.png", "/brand/mark-light.png"];
 
 self.addEventListener("install", (e) => {
@@ -85,8 +85,13 @@ self.addEventListener("push", (e) => {
   const isCall = kind === "call";
   // Calls and their "missed" follow-up share one tag, so the missed-call notice replaces the ringing one.
   const tag = kind === "call" || kind === "missed_call" ? "allyza-call" : "allyza-" + kind;
-  e.waitUntil(
-    self.registration.showNotification("Allyza", {
+  e.waitUntil((async () => {
+    // Already looking at the conversation: the message appears there, a banner on top of it would be noise.
+    if (kind === "message") {
+      const open = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      if (open.some((c) => c.visibilityState === "visible" && c.focused !== false && new URL(c.url).pathname.startsWith("/messages/chat"))) return;
+    }
+    return self.registration.showNotification("Allyza", {
       body,
       icon: "/icons/icon-192.png",
       badge: "/icons/favicon-48.png",
@@ -96,8 +101,8 @@ self.addEventListener("push", (e) => {
       requireInteraction: isCall,
       vibrate: isCall ? [300, 150, 300, 150, 300, 150, 300] : [120],
       data: { url: TARGET[kind], kind, callId: data.callId || null, sentAt: Date.now() },
-    }),
-  );
+    });
+  })());
 });
 
 self.addEventListener("notificationclick", (e) => {
