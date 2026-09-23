@@ -24,7 +24,11 @@ export const SURPRISE_KINDS = ["love", "encouragement", "funny", "memory", "comp
 export const SURPRISE_UNLOCKS = ["anytime", "miss_me", "hard_day", "need_smile", "tonight", "tomorrow", "date"] as const;
 export const STORY_EMOTIONS = ["love", "joy", "laugh", "tender", "nostalgia", "wonder"] as const;
 export const JOKE_KINDS = ["joke", "nickname", "phrase", "quote", "moment"] as const;
-export const CHECKIN_STATES = ["good", "ok", "tired", "love"] as const;
+export const CHECKIN_STATES = ["good", "ok", "tired", "bad", "calm", "love", "idk"] as const;
+export const CUSTOM_CONTENT_CATEGORIES = [
+  "note", "compliment", "poem", "letter", "memory", "joke", "encouragement", "open_when", "surprise", "daily",
+] as const;
+export const MOOD_TAGS = ["calm", "happy", "tired", "sad", "irritated", "anxious", "sensitive", "neutral"] as const;
 
 export const SHARING_KEYS = [
   "share_cycle_day", "share_period_status", "share_pain", "share_mood",

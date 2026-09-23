@@ -51,6 +51,7 @@ export const ICONS = {
   mood1: Frown, mood2: Annoyed, mood3: Meh, mood4: Smile, mood5: Laugh,
   // "how are you, really?"
   ciGood: SmilePlus, ciOk: Smile, ciTired: BedDouble, ciLove: HeartHandshake,
+  ciBad: Frown, ciCalm: Wind, ciIdk: CircleHelp,
   // food categories
   fruit: Apple, vegetables: Carrot, protein: Drumstick, legumes: Bean, whole_grains: Wheat,
   water: GlassWater, sweet_foods: CakeSlice, sugary_drinks: CupSoda, other: Utensils,

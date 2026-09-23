@@ -16,7 +16,7 @@ export default async function StatsPage() {
   const s = computeStats(periods);
   const enoughCycles = s.cycleCount >= MIN_CYCLES_FOR_STATS;
 
-  const trends = (["pain", "fatigue", "mood"] as const).map((f) => {
+  const trends = (["pain", "fatigue", "energy", "mood"] as const).map((f) => {
     const pts = series(logs, f, 60);
     return { f, pts, dir: trendDirection(pts) };
   });
@@ -65,7 +65,7 @@ export default async function StatsPage() {
                 </div>
                 <LineChart
                   points={pts} min={f === "mood" ? 1 : 0} max={f === "mood" ? 5 : 10}
-                  color={f === "pain" ? "var(--rose)" : f === "fatigue" ? "var(--mauve)" : "var(--accent)"}
+                  color={f === "pain" ? "var(--rose)" : f === "fatigue" ? "var(--mauve)" : f === "energy" ? "var(--good)" : "var(--accent)"}
                   label={t(`wellbeing.${f}`)}
                 />
               </div>

@@ -207,4 +207,38 @@ await asUser(him.id, async () => {
   check("partner cannot overwrite her avatar", r.rows.length === 0);
 });
 
+// Custom content: drafts/scheduled-not-due are author-only; published or scheduled-and-due is couple-visible
+let draftId, publishedId, dueScheduledId;
+await asUser(him.id, async () => {
+  draftId = (await q(`insert into custom_content(couple_id, category, body, status) values ('${c.id}','note','still working on this','draft') returning id`))[0].id;
+  publishedId = (await q(`insert into custom_content(couple_id, category, body, status) values ('${c.id}','compliment','you are lovely','published') returning id`))[0].id;
+  await db.query(`insert into custom_content(couple_id, category, body, status, publish_at) values ('${c.id}','poem','a poem for later','scheduled', now() + interval '1 day')`);
+  dueScheduledId = (await q(`insert into custom_content(couple_id, category, body, status, publish_at) values ('${c.id}','letter','open this now','scheduled', now() - interval '1 minute') returning id`))[0].id;
+});
+await asUser(her.id, async () => {
+  const visible = await q(`select id from custom_content order by created_at`);
+  check("she sees the published note and the due scheduled one, not the future one", visible.length === 2 && visible.some((r) => r.id === publishedId) && visible.some((r) => r.id === dueScheduledId));
+  await expectFail("she cannot edit his content", async () => { const r = await db.query(`update custom_content set body='hacked' where id='${publishedId}' returning id`); if (!r.rows.length) throw new Error("0 rows"); });
+});
+await asUser(him.id, async () => {
+  const mine = await q(`select id from custom_content order by created_at`);
+  check("he sees his own draft, published and scheduled content", mine.length === 4);
+  check("draft id is his own", mine.some((r) => r.id === draftId));
+});
+check("outsider sees no custom content", (await asUser(eve.id, () => q(`select * from custom_content`))).length === 0);
+
+// Calls: only the two of them, caller can't spoof, either side can update state
+let callId;
+await asUser(him.id, async () => {
+  callId = (await q(`insert into calls(couple_id, caller_id, callee_id, kind) values ('${c.id}','${him.id}','${her.id}','audio') returning id`))[0].id;
+  await expectFail("cannot spoof another caller", () => db.query(`insert into calls(couple_id, caller_id, callee_id, kind) values ('${c.id}','${her.id}','${him.id}','audio')`));
+});
+await asUser(her.id, async () => {
+  await db.query(`update calls set status='accepted', answered_at=now() where id='${callId}'`);
+  check("she can accept his call", (await q(`select status from calls where id='${callId}'`))[0].status === "accepted");
+  await db.query(`update calls set caller_id='${her.id}' where id='${callId}'`);
+  check("who-called-whom stays guarded even for the callee", (await q(`select caller_id from calls where id='${callId}'`))[0].caller_id === him.id);
+});
+check("outsider sees no calls", (await asUser(eve.id, () => q(`select * from calls`))).length === 0);
+
 console.log(process.exitCode ? "\nSOME CHECKS FAILED" : "\nALL CHECKS PASSED");

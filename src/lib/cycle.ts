@@ -11,6 +11,11 @@ export type DailyLog = {
   pain_duration_min: number | null;
   fatigue: number | null;
   mood: number | null;
+  mood_tag: string | null;
+  energy: number | null;
+  sleep_bedtime: string | null;
+  sleep_wake_time: string | null;
+  sleep_quality: number | null;
   sugar_level: "low" | "moderate" | "high" | null;
   symptoms: string[];
   note: string | null;
@@ -97,7 +102,7 @@ export const MIN_CYCLES_FOR_STATS = 3;
 export const MIN_LOGS_FOR_TRENDS = 7;
 
 /** Averages of a numeric field over rolling windows (for trend lines). */
-export function series(logs: DailyLog[], field: "pain" | "fatigue" | "mood", days = 60) {
+export function series(logs: DailyLog[], field: "pain" | "fatigue" | "mood" | "energy", days = 60) {
   const cutoff = addDays(toISODate(), -days);
   return logs
     .filter((l) => l.log_date >= cutoff && l[field] !== null)
@@ -119,6 +124,15 @@ export function sugarPattern(logs: DailyLog[], days = 60) {
   const rec = logs.filter((l) => l.log_date >= cutoff && l.sugar_level);
   const count = (v: string) => rec.filter((l) => l.sugar_level === v).length;
   return { total: rec.length, low: count("low"), moderate: count("moderate"), high: count("high") };
+}
+
+/** Minutes asleep from "HH:MM" bedtime/wake times, assuming wake is the next occurrence after bedtime. */
+export function sleepDurationMin(bedtime: string | null, wake: string | null): number | null {
+  if (!bedtime || !wake) return null;
+  const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+  const b = toMin(bedtime);
+  const w = toMin(wake);
+  return w > b ? w - b : 24 * 60 - b + w;
 }
 
 export function foodPattern(food: FoodLog[], days = 30) {

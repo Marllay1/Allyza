@@ -5,18 +5,26 @@ import { useRouter } from "next/navigation";
 import { addFoodAction } from "@/actions/cycle";
 import { updatePrefsAction } from "@/actions/prefs";
 import { AppIcon } from "@/components/icons";
+import { Hydration } from "@/components/Hydration";
 import { useUnread } from "@/components/AppShell";
 import { Section, Stat, TileLink } from "@/components/ui";
 import { CheckIn } from "@/features/home/CheckIn";
 import { Greeting } from "@/features/home/Greeting";
+import { LittleSomething } from "@/features/home/LittleSomething";
+import { NoteFromHim } from "@/features/home/NoteFromHim";
 import { computeStats, currentCycleDay, toISODate, type DailyLog, type FoodLog, type Period } from "@/lib/cycle";
 import { formatDay } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/provider";
 import { startNight } from "@/lib/local-pref";
+import { MOOD_TAG_ICON, type MoodTag } from "@/lib/mood";
 
-type Props = { name: string; partnerName: string; periods: Period[]; logs: DailyLog[]; food: FoodLog[]; sharedCount: number; hasPartner: boolean; soft: boolean };
+type Note = { id: string; category: string; title: string | null; body: string } | null;
+type Props = {
+  name: string; partnerName: string; periods: Period[]; logs: DailyLog[]; food: FoodLog[];
+  sharedCount: number; hasPartner: boolean; soft: boolean; note: Note;
+};
 
-export function HomeHer({ name, partnerName, periods, logs, food, sharedCount, hasPartner, soft }: Props) {
+export function HomeHer({ name, partnerName, periods, logs, food, sharedCount, hasPartner, soft, note }: Props) {
   const { t, locale } = useI18n();
   const router = useRouter();
   const { unread } = useUnread();
@@ -35,12 +43,14 @@ export function HomeHer({ name, partnerName, periods, logs, food, sharedCount, h
       <Greeting name={name} />
       {soft && <p className="text-muted -mt-3 mb-5">{t("soft.welcome")}</p>}
 
+      <div className="grid gap-3 mb-4">
+        <NoteFromHim note={note} />
+        <LittleSomething />
+      </div>
+
       <CheckIn partnerName={partnerName} hasPartner={hasPartner} />
 
-      {/* three rooms, one universe */}
-      <div className="grid gap-3 mb-6">
-        <TileLink href="/her" icon="her" tone="rose" title={t("home.herTitle")} text={day ? t("home.herCardDay", { n: day }) : t("home.herCard")} />
-        <TileLink href="/refuge" icon="refuge" tone="mauve" title={t("nav.refuge")} text={t("home.refugeCard")} right={unread.refuge > 0 ? <span className="size-2.5 rounded-full bg-rose pop-in" role="status" aria-label={t("nav.new")} /> : undefined} />
+      <div className="grid gap-3 my-6">
         <TileLink
           href={unread.surprise > 0 ? "/us/surprises" : "/us"}
           icon="us" tone="gold" title={t("nav.us")}
@@ -53,10 +63,15 @@ export function HomeHer({ name, partnerName, periods, logs, food, sharedCount, h
         <div className="grid grid-cols-2 gap-3">
           <Stat icon="cycle" label={t("home.cycleDay")} value={day ? day : "–"} hint={last ? t("home.since", { date: formatDay(last.start_date, locale) }) : t("home.noPeriodYet")} />
           <Stat icon="calendar" label={t("stats.avgCycleLabel")} value={stats.avgCycle ? t("common.daysShort", { n: stats.avgCycle }) : "–"} hint={stats.avgCycle ? t("stats.observedHint") : t("stats.notEnough")} />
-          <Stat icon="mood4" label={t("wellbeing.mood")} value={log?.mood ? <AppIcon name={`mood${log.mood}` as "mood1"} size={30} label={t(`wellbeing.moodLevel.${log.mood as 1 | 2 | 3 | 4 | 5}`)} /> : "–"} />
+          <Stat icon="mood4" label={t("wellbeing.mood")} value={
+            log?.mood_tag ? <AppIcon name={MOOD_TAG_ICON[log.mood_tag as MoodTag]} size={30} label={t(`wellbeing.moodTags.${log.mood_tag as MoodTag}`)} />
+              : log?.mood ? <AppIcon name={`mood${log.mood}` as "mood1"} size={30} label={t(`wellbeing.moodLevel.${log.mood as 1 | 2 | 3 | 4 | 5}`)} />
+              : "–"
+          } />
+          <Stat icon="wellbeing" label={t("wellbeing.energy")} value={log?.energy != null ? `${log.energy}/10` : "–"} />
           <Stat icon="wellbeing" label={t("wellbeing.fatigue")} value={log?.fatigue != null ? `${log.fatigue}/10` : "–"} />
           <Stat icon="stats" label={t("wellbeing.pain")} value={log?.pain != null ? `${log.pain}/10` : "–"} />
-          <Stat icon="hydration" label={t("home.hydration")} value={water} />
+          <Stat icon="hydration" label={t("home.hydration")} value={<Hydration count={water} compact />} />
         </div>
         <div className="grid grid-cols-2 gap-2 mt-4">
           <Link href="/her/wellbeing" className="btn btn-primary">{t("home.logToday")}</Link>

@@ -19,7 +19,15 @@ export async function quickCheckinAction(input: { date: string; state: string })
   if (!c) return fail("auth");
   if (!rateLimit(`checkin:${c.uid}`, 30, 60_000)) return fail("rate");
   // Only the fields this answer implies are written; everything else already logged that day is kept.
-  const patch = { good: { mood: 4 }, ok: { mood: 3 }, tired: { fatigue: 7 }, love: { mood: 2 } }[p.data.state];
+  const patch = {
+    good: { mood: 4 },
+    ok: { mood: 3 },
+    tired: { fatigue: 7 },
+    bad: { mood: 2 },
+    calm: { energy: 3 },
+    love: { mood: 2 },
+    idk: {},
+  }[p.data.state as (typeof CHECKIN_STATES)[number]];
   const { error } = await c.supabase.from("daily_logs").upsert({ user_id: c.uid, log_date: p.data.date, ...patch }, { onConflict: "user_id,log_date" });
   if (error) return fail("generic");
   revalidatePath("/home");

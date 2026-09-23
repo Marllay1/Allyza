@@ -1,9 +1,10 @@
 import { AppIcon } from "@/components/icons";
 import { Empty, PageHeader, Section } from "@/components/ui";
-import { daysBetween, type DailyLog } from "@/lib/cycle";
+import { daysBetween, sleepDurationMin, type DailyLog } from "@/lib/cycle";
 import { formatDay } from "@/lib/format";
 import { loadHerData } from "@/lib/her-data";
 import { getT } from "@/lib/i18n/server";
+import { MOOD_TAG_ICON, type MoodTag } from "@/lib/mood";
 import { requireHer } from "@/lib/session";
 
 export default async function HistoryPage() {
@@ -14,7 +15,8 @@ export default async function HistoryPage() {
   food.forEach((f) => foodByDay.set(f.log_date, (foodByDay.get(f.log_date) ?? 0) + 1));
 
   const hasContent = (l: DailyLog) =>
-    l.is_period || l.pain !== null || l.fatigue !== null || l.mood !== null || l.symptoms.length > 0 || !!l.note || !!l.sugar_level;
+    l.is_period || l.pain !== null || l.fatigue !== null || l.mood !== null || l.energy !== null
+    || l.sleep_bedtime !== null || l.symptoms.length > 0 || !!l.note || !!l.sugar_level;
   const entries = logs.filter(hasContent);
 
   return (
@@ -52,12 +54,20 @@ export default async function HistoryPage() {
                   <span className="font-medium">{formatDay(l.log_date, locale, { weekday: "short", day: "numeric", month: "long" })}</span>
                   <span className="flex items-center gap-2 text-sm text-muted">
                     {l.is_period && <span title={t("cycle.flow")} className="inline-flex gap-0.5 text-rose">{Array.from({ length: l.flow ?? 1 }, (_, k) => <AppIcon key={k} name="drop" size={13} />)}</span>}
-                    {l.mood && <AppIcon name={`mood${l.mood}` as "mood1"} size={18} label={t("wellbeing.mood")} />}
+                    {l.mood_tag ? (
+                      <AppIcon name={MOOD_TAG_ICON[l.mood_tag as MoodTag]} size={18} label={t(`wellbeing.moodTags.${l.mood_tag as MoodTag}`)} />
+                    ) : l.mood ? (
+                      <AppIcon name={`mood${l.mood}` as "mood1"} size={18} label={t("wellbeing.mood")} />
+                    ) : null}
                   </span>
                 </div>
                 <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
-                  {l.pain !== null && <span>{t("wellbeing.pain")} {l.pain}/10</span>}
+                  {l.energy !== null && <span>{t("wellbeing.energy")} {l.energy}/10</span>}
                   {l.fatigue !== null && <span>{t("wellbeing.fatigue")} {l.fatigue}/10</span>}
+                  {l.pain !== null && <span>{t("wellbeing.pain")} {l.pain}/10</span>}
+                  {l.sleep_bedtime && l.sleep_wake_time && (
+                    <span>{t("wellbeing.sleep")} {(() => { const m = sleepDurationMin(l.sleep_bedtime, l.sleep_wake_time)!; return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`; })()}</span>
+                  )}
                   {l.sugar_level && <span>{t("food.sugarShort")} {t(`food.sugar.${l.sugar_level}`)}</span>}
                   {foodByDay.get(l.log_date) ? <span className="inline-flex items-center gap-1"><AppIcon name="food" size={13} /> {foodByDay.get(l.log_date)}</span> : null}
                 </div>

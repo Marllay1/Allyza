@@ -10,7 +10,9 @@ import { useT } from "@/lib/i18n/provider";
 import { haptic } from "@/lib/local-pref";
 import type { ErrCode } from "@/lib/action-utils";
 
-const ICON: Record<(typeof CHECKIN_STATES)[number], IconName> = { good: "ciGood", ok: "ciOk", tired: "ciTired", love: "ciLove" };
+const ICON: Record<(typeof CHECKIN_STATES)[number], IconName> = {
+  good: "ciGood", ok: "ciOk", tired: "ciTired", bad: "ciBad", calm: "ciCalm", love: "ciLove", idk: "ciIdk",
+};
 
 /**
  * "How are you, really?" — four answers, a few seconds, no questionnaire.

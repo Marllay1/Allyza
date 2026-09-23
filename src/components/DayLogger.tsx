@@ -3,24 +3,28 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveDayLogAction, type DayLogInput } from "@/actions/cycle";
 import { useI18n } from "@/lib/i18n/provider";
-import { PAIN_TYPES, SYMPTOMS } from "@/lib/constants";
-import { addDays, toISODate, type DailyLog } from "@/lib/cycle";
+import { MOOD_TAGS, PAIN_TYPES, SYMPTOMS } from "@/lib/constants";
+import { addDays, sleepDurationMin, toISODate, type DailyLog } from "@/lib/cycle";
 import { formatDay } from "@/lib/format";
 import { AppIcon } from "@/components/icons";
 import { ErrorNote, Notice } from "@/components/Feedback";
+import { MOOD_TAG_ICON, MOOD_TAG_INTENSITY, type MoodTag } from "@/lib/mood";
 import type { ErrCode } from "@/lib/action-utils";
 
 type Sections = "period" | "wellbeing";
 
 const blank = (date: string): DayLogInput => ({
   date, is_period: false, flow: null, pain: null, pain_type: null, pain_duration_min: null,
-  fatigue: null, mood: null, sugar_level: null, symptoms: [], note: null,
+  fatigue: null, mood: null, mood_tag: null, energy: null,
+  sleep_bedtime: null, sleep_wake_time: null, sleep_quality: null,
+  sugar_level: null, symptoms: [], note: null,
 });
 
 const fromLog = (l: DailyLog): DayLogInput => ({
   date: l.log_date, is_period: l.is_period, flow: l.flow, pain: l.pain, pain_type: l.pain_type as DayLogInput["pain_type"],
-  pain_duration_min: l.pain_duration_min, fatigue: l.fatigue, mood: l.mood, sugar_level: l.sugar_level,
-  symptoms: l.symptoms as DayLogInput["symptoms"], note: l.note,
+  pain_duration_min: l.pain_duration_min, fatigue: l.fatigue, mood: l.mood, mood_tag: l.mood_tag as MoodTag | null, energy: l.energy,
+  sleep_bedtime: l.sleep_bedtime, sleep_wake_time: l.sleep_wake_time, sleep_quality: l.sleep_quality,
+  sugar_level: l.sugar_level, symptoms: l.symptoms as DayLogInput["symptoms"], note: l.note,
 });
 
 function Scale({ value, onChange, label, low, high }: { value: number | null; onChange: (v: number | null) => void; label: string; low: string; high: string }) {
@@ -54,6 +58,12 @@ export function DayLogger({ logs, sections }: { logs: DailyLog[]; sections: Sect
   const [pending, start] = useTransition();
 
   const set = <K extends keyof DayLogInput>(k: K, v: DayLogInput[K]) => { setForm((f) => ({ ...f, [k]: v })); setSaved(false); };
+  const setMoodTag = (tag: MoodTag) => {
+    const same = form.mood_tag === tag;
+    setForm((f) => ({ ...f, mood_tag: same ? null : tag, mood: same ? null : MOOD_TAG_INTENSITY[tag] }));
+    setSaved(false);
+  };
+  const duration = sleepDurationMin(form.sleep_bedtime, form.sleep_wake_time);
   const changeDate = (d: string) => {
     setDate(d); setSaved(false); setError(null);
     setForm(byDate.get(d) ? fromLog(byDate.get(d)!) : blank(d));
@@ -108,17 +118,18 @@ export function DayLogger({ logs, sections }: { logs: DailyLog[]; sections: Sect
         <>
           <div>
             <span className="label">{t("wellbeing.mood")}</span>
-            <div className="grid grid-cols-5 gap-2" role="radiogroup" aria-label={t("wellbeing.mood")}>
-              {[1, 2, 3, 4, 5].map((m) => (
-                <button key={m} type="button" role="radio" aria-checked={form.mood === m} onClick={() => set("mood", form.mood === m ? null : m)}
+            <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label={t("wellbeing.mood")}>
+              {MOOD_TAGS.map((tag) => (
+                <button key={tag} type="button" role="radio" aria-checked={form.mood_tag === tag} onClick={() => setMoodTag(tag)}
                   className="chip !flex-col !min-h-16 !rounded-2xl !justify-center !px-1 text-center">
-                  <AppIcon name={`mood${m}` as "mood1"} size={26} />
-                  <span className="text-[0.68rem] leading-tight">{t(`wellbeing.moodLevel.${m as 1 | 2 | 3 | 4 | 5}`)}</span>
+                  <AppIcon name={MOOD_TAG_ICON[tag]} size={24} />
+                  <span className="text-[0.68rem] leading-tight">{t(`wellbeing.moodTags.${tag}`)}</span>
                 </button>
               ))}
             </div>
           </div>
 
+          <Scale label={t("wellbeing.energy")} value={form.energy} onChange={(v) => set("energy", v)} low={t("wellbeing.none")} high={t("wellbeing.max")} />
           <Scale label={t("wellbeing.fatigue")} value={form.fatigue} onChange={(v) => set("fatigue", v)} low={t("wellbeing.none")} high={t("wellbeing.max")} />
           <Scale label={t("wellbeing.pain")} value={form.pain} onChange={(v) => set("pain", v)} low={t("wellbeing.none")} high={t("wellbeing.max")} />
 
@@ -155,6 +166,34 @@ export function DayLogger({ logs, sections }: { logs: DailyLog[]; sections: Sect
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          <div className="grid gap-3 rounded-2xl border border-line p-4">
+            <span className="label !mb-0">{t("wellbeing.sleep")}</span>
+            <div className="grid grid-cols-2 gap-3">
+              <label>
+                <span className="text-xs text-muted">{t("wellbeing.sleepBedtime")}</span>
+                <input type="time" className="field" value={form.sleep_bedtime ?? ""} onChange={(e) => set("sleep_bedtime", e.target.value || null)} />
+              </label>
+              <label>
+                <span className="text-xs text-muted">{t("wellbeing.sleepWake")}</span>
+                <input type="time" className="field" value={form.sleep_wake_time ?? ""} onChange={(e) => set("sleep_wake_time", e.target.value || null)} />
+              </label>
+            </div>
+            {duration !== null && (
+              <p className="text-sm text-muted">{t("wellbeing.sleepDuration", { h: Math.floor(duration / 60), m: duration % 60 })}</p>
+            )}
+            <div>
+              <span className="text-xs text-muted">{t("wellbeing.sleepQuality")}</span>
+              <div className="flex flex-wrap gap-2 mt-1.5" role="radiogroup" aria-label={t("wellbeing.sleepQuality")}>
+                {[1, 2, 3, 4, 5].map((q) => (
+                  <button key={q} type="button" role="radio" aria-checked={form.sleep_quality === q} className="chip"
+                    onClick={() => set("sleep_quality", form.sleep_quality === q ? null : q)}>
+                    {t(`wellbeing.sleepQualityLevel.${q as 1 | 2 | 3 | 4 | 5}`)}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </>

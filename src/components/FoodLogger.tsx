@@ -7,6 +7,7 @@ import { FOOD_CATEGORIES } from "@/lib/constants";
 import { toISODate, type DailyLog, type FoodLog } from "@/lib/cycle";
 import { ErrorNote } from "@/components/Feedback";
 import { AppIcon } from "@/components/icons";
+import { Hydration } from "@/components/Hydration";
 import type { ErrCode } from "@/lib/action-utils";
 
 
@@ -19,6 +20,7 @@ export function FoodLogger({ food, logs }: { food: FoodLog[]; logs: DailyLog[] }
   const [error, setError] = useState<ErrCode | null>(null);
   const [sugar, setSugar] = useState<DailyLog["sugar_level"]>(todayLog?.sugar_level ?? null);
   const todays = food.filter((f) => f.log_date === today);
+  const water = todays.filter((f) => f.category === "water").length;
 
   const run = (fn: () => Promise<{ ok: boolean; error?: ErrCode }>) =>
     start(async () => {
@@ -40,6 +42,11 @@ export function FoodLogger({ food, logs }: { food: FoodLog[]; logs: DailyLog[] }
         pain_duration_min: todayLog?.pain_duration_min ?? null,
         fatigue: todayLog?.fatigue ?? null,
         mood: todayLog?.mood ?? null,
+        mood_tag: (todayLog?.mood_tag as never) ?? null,
+        energy: todayLog?.energy ?? null,
+        sleep_bedtime: todayLog?.sleep_bedtime ?? null,
+        sleep_wake_time: todayLog?.sleep_wake_time ?? null,
+        sleep_quality: todayLog?.sleep_quality ?? null,
         sugar_level: v,
         symptoms: (todayLog?.symptoms as never) ?? [],
         note: todayLog?.note ?? null,
@@ -49,6 +56,8 @@ export function FoodLogger({ food, logs }: { food: FoodLog[]; logs: DailyLog[] }
 
   return (
     <div className="grid gap-6">
+      <Hydration count={water} />
+
       <div>
         <span className="label">{t("food.addPrompt")}</span>
         <div className="grid grid-cols-3 gap-2">

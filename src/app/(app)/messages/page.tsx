@@ -1,14 +1,11 @@
-import { ChatClient, type ChatMessage } from "@/features/messaging/ChatClient";
-import { CallButtons } from "@/features/messaging/CallSheet";
-import { ChatInfoButton } from "@/features/messaging/ChatInfo";
+import { MessagesLandingLink } from "@/features/messaging/MessagesLandingLink";
 import { PageHeader } from "@/components/ui";
 import { getT } from "@/lib/i18n/server";
 import { getMyNicknameForPartner } from "@/lib/nickname";
 import { requireCouple } from "@/lib/session";
 import { createClient } from "@/lib/supabase/server";
-import type { Reaction } from "@/lib/use-reactions";
 
-export default async function MessagesPage() {
+export default async function MessagesLandingPage() {
   const v = await requireCouple();
   const { t } = await getT();
   const supabase = await createClient();
@@ -23,42 +20,13 @@ export default async function MessagesPage() {
     );
   }
 
-  const [{ data: messages }, { data: reactions }, { data: profiles }, { data: cursors }] = await Promise.all([
-    supabase.from("messages").select("id, author_id, kind, body, storage_path, duration_ms, reply_to, edited_at, deleted_at, created_at").order("created_at", { ascending: false }).limit(150),
-    supabase.from("reactions").select("id, target_type, target_id, emoji, author_id").eq("target_type", "message").limit(1000),
-    supabase.from("profiles").select("id, display_name, avatar_path"),
-    supabase.from("message_cursors").select("user_id, last_read_at"),
-  ]);
-
-  const otherProfile = profiles?.find((p) => p.id === otherId);
-  const otherFallback = otherProfile?.display_name || t("couple.partnerFallback");
-  const otherName = await getMyNicknameForPartner(otherId, otherFallback);
-  const myCursor = cursors?.find((c) => c.user_id === v.id)?.last_read_at ?? null;
-  const theirCursor = cursors?.find((c) => c.user_id === otherId)?.last_read_at ?? null;
-
-  const imagePaths = (messages ?? []).filter((m) => m.kind === "image" && m.storage_path).map((m) => m.storage_path as string);
-  let photos: string[] = [];
-  if (imagePaths.length) {
-    const { data: signed } = await supabase.storage.from("couple-media").createSignedUrls(imagePaths, 3600);
-    photos = (signed ?? []).map((s) => s.signedUrl).filter((u): u is string => Boolean(u));
-  }
-
+  const { data: otherProfile } = await supabase.from("profiles").select("display_name, avatar_path").eq("id", otherId).maybeSingle();
+  const otherName = await getMyNicknameForPartner(otherId, otherProfile?.display_name || t("couple.partnerFallback"));
   const otherTone = v.role === "her" ? "gold" : "rose";
+
   return (
-    <>
-      <PageHeader title={otherName} subtitle={t("messaging.subtitle")} back="/home" backLabel={t("common.back")}
-        actions={<>
-          <ChatInfoButton name={otherName} avatar={otherProfile?.avatar_path ?? null} tone={otherTone} photos={photos} />
-          <CallButtons name={otherName} avatar={otherProfile?.avatar_path ?? null} tone={otherTone} />
-        </>} />
-      <ChatClient
-        coupleId={v.couple.id}
-        me={{ id: v.id, name: t("common.you"), avatar: null, tone: v.role === "her" ? "rose" : "gold" }}
-        other={{ id: otherId, name: otherName, avatar: otherProfile?.avatar_path ?? null, tone: otherTone }}
-        initialMessages={((messages ?? []) as ChatMessage[]).reverse()}
-        initialReactions={(reactions ?? []) as Reaction[]}
-        initialCursors={{ mine: myCursor, theirs: theirCursor }}
-      />
-    </>
+    <div className="flex-1 grid place-items-center min-h-[65dvh]">
+      <MessagesLandingLink name={otherName} avatar={otherProfile?.avatar_path ?? null} tone={otherTone} />
+    </div>
   );
 }

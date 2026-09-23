@@ -101,6 +101,6 @@ export async function markMessagesReadAction() {
     .from("message_cursors")
     .upsert({ couple_id: c.couple.id, last_read_at: new Date().toISOString() }, { onConflict: "user_id" });
   if (error) return fail("generic");
-  revalidatePath("/messages");
+  revalidatePath("/messages/chat");
   return ok();
 }

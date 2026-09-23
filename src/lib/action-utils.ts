@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { getAuthUser } from "@/lib/supabase/request";
 
 /** Error codes are translation keys under `errors.*`: the UI never shows raw server text. */
 export type ErrCode =
@@ -40,11 +40,11 @@ export function rateLimit(key: string, limit: number, windowMs: number): boolean
   return true;
 }
 
-/** Authenticated user id from the verified session, or null. */
+/** Authenticated user id from the verified session, or null. Never re-checks against Supabase:
+ * proxy.ts already verified this request once and this just reads that result. */
 export async function currentUserId(): Promise<string | null> {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  return data.user?.id ?? null;
+  const user = await getAuthUser();
+  return user?.id ?? null;
 }
 
 export const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);

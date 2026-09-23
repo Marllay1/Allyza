@@ -250,14 +250,29 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
   const time = (iso: string) => new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
   const lastMineId = [...messages].reverse().find((m) => m.author_id === me.id && !m.deleted_at)?.id;
 
+  // The background appears once there's something to look at; before that, the plain room tint stays.
+  const hasMessages = messages.length > 0;
+  const bgStyle: React.CSSProperties | undefined = hasMessages
+    ? {
+        backgroundImage: "url('/assets/messaging/background.jpg'), linear-gradient(160deg, var(--mauve), var(--accent) 55%, var(--rose))",
+        backgroundSize: "cover, cover",
+        backgroundPosition: "center, center",
+      }
+    : undefined;
+
   return (
-    <div className="flex flex-col">
-      <div ref={scrollerRef} className="grid gap-1 pb-4 max-h-[65dvh] overflow-y-auto -mx-1 px-1">
+    <div className="relative flex-1 min-h-0 flex flex-col">
+      {hasMessages && (
+        <>
+          <div aria-hidden className="absolute inset-0 pointer-events-none" style={bgStyle} />
+          <div aria-hidden className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to bottom, color-mix(in srgb, var(--bg) 60%, transparent), color-mix(in srgb, var(--bg) 30%, transparent) 40%, color-mix(in srgb, var(--bg) 65%, transparent))" }} />
+        </>
+      )}
+      <div ref={scrollerRef} className="relative flex-1 min-h-0 overflow-y-auto grid gap-1 content-start px-3 pb-3">
         {messages.length === 0 && (
-          <div className="text-center py-10 grid justify-items-center gap-2">
+          <div className="m-auto text-center py-10 grid justify-items-center gap-2">
             <AppIcon name="message" size={30} className="text-muted opacity-60" />
             <p className="font-display text-2xl">{t("messaging.emptyTitle")}</p>
-            <p className="text-muted text-balance max-w-xs">{t("messaging.emptyBody")}</p>
           </div>
         )}
         {days.map(({ day, items }) => (
@@ -346,11 +361,11 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
       </div>
 
       {showJump && (
-        <button type="button" className="icon-btn glass absolute right-2 -top-2 z-10" aria-label={t("messaging.jumpToLatest")}
+        <button type="button" className="icon-btn glass absolute right-3 top-3 z-20" aria-label={t("messaging.jumpToLatest")}
           onClick={() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })}><AppIcon name="down" size={18} /></button>
       )}
 
-      <div className="sticky bottom-[calc(4.6rem+env(safe-area-inset-bottom))] card p-3 grid gap-2 z-10">
+      <div className="relative z-20 card !rounded-b-none border-b-0 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] grid gap-2">
         <ErrorNote code={error} />
         {replyTo && (
           <div className="flex items-center gap-2 rounded-xl bg-surface2 px-3 py-2 text-sm">

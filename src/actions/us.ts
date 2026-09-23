@@ -5,15 +5,16 @@ import { createClient } from "@/lib/supabase/server";
 import { fail, ok, rateLimit, uuid } from "@/lib/action-utils";
 import { LITTLE_KINDS, MEDIA_CATEGORIES, REACTION_EMOJIS } from "@/lib/constants";
 import { pingPartner } from "@/lib/push";
+import { getAuthUser } from "@/lib/supabase/request";
 
 async function ctx() {
   const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return null;
+  const user = await getAuthUser();
+  if (!user) return null;
   // Couple id always comes from the database (RLS-limited), never from the client.
   const { data: couple } = await supabase.from("couples").select("id, her_id, partner_id").maybeSingle();
   if (!couple) return null;
-  return { supabase, uid: auth.user.id, couple };
+  return { supabase, uid: user.id, couple };
 }
 
 /* ───────── journal ───────── */

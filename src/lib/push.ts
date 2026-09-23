@@ -3,6 +3,7 @@ import webpush from "web-push";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/action-utils";
+import { getAuthUser } from "@/lib/supabase/request";
 
 export type PushKind = "journal" | "media" | "refuge" | "little" | "surprise" | "message";
 
@@ -18,14 +19,14 @@ export async function pingPartner(kind: PushKind) {
     const admin = createAdminClient();
     if (!pub || !priv || !admin) return;
 
-    const supabase = await createClient();
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth.user) return;
-    if (!rateLimit(`push:${auth.user.id}`, 30, 60_000)) return;
+    const user = await getAuthUser();
+    if (!user) return;
+    if (!rateLimit(`push:${user.id}`, 30, 60_000)) return;
 
+    const supabase = await createClient();
     const { data: couple } = await supabase.from("couples").select("her_id, partner_id").maybeSingle();
     if (!couple) return;
-    const target = couple.her_id === auth.user.id ? couple.partner_id : couple.her_id;
+    const target = couple.her_id === user.id ? couple.partner_id : couple.her_id;
     if (!target) return;
 
     const prefKey = { journal: "notify_journal", media: "notify_media", refuge: "notify_refuge", little: "notify_little", surprise: "notify_surprise", message: "notify_message" }[kind];

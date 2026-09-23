@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { AppIcon } from "@/components/icons";
 import { ClientOnly } from "@/components/ClientOnly";
 import { useUnread } from "@/components/AppShell";
@@ -8,7 +9,8 @@ import { StatusCard } from "@/features/home/StatusCard";
 import { useT } from "@/lib/i18n/provider";
 import { startNight } from "@/lib/local-pref";
 
-/** His Home: a quick read on her (full detail lives on the "Her" tab), then the three rooms he has. */
+/** His Home: a quiet read on her (full detail lives on the "Her" tab) and a place to leave her something —
+ * nothing here repeats a navbar destination as a big button; Refuge/Us/Messages stay one tap away in the bar. */
 export function PartnerHome({ myName, herName }: { myName: string; herName: string }) {
   const t = useT();
   const { unread } = useUnread();
@@ -23,12 +25,15 @@ export function PartnerHome({ myName, herName }: { myName: string; herName: stri
           <StatusCard name={herName} compact />
         </ClientOnly>
         <p className="text-xs text-muted mt-4 inline-flex items-center gap-1.5"><AppIcon name="lock" size={13} /> {t("partner.onlyShared", { name: herName })}</p>
+        {fromHer > 0 && (
+          <Link href="/us" className="text-sm text-accent mt-3 inline-flex items-center gap-1.5">
+            <span className="size-2 rounded-full bg-rose pop-in" role="status" aria-label={t("nav.new")} /> {t("home.usLeft", { name: herName })}
+          </Link>
+        )}
       </Section>
 
       <div className="grid gap-3 mb-4">
-        <TileLink href="/refuge" icon="love" tone="rose" title={t("nav.her")} text={t("partner.careCard", { name: herName })} />
-        <TileLink href="/us" icon="us" tone="gold" title={t("nav.us")} text={fromHer > 0 ? t("home.usLeft", { name: herName }) : t("home.usCard")} right={fromHer > 0 ? <span className="size-2.5 rounded-full bg-rose pop-in" role="status" aria-label={t("nav.new")} /> : undefined} />
-        <TileLink href="/messages" icon="message" tone="accent" title={t("nav.messaging")} text={t("partner.messagingCard", { name: herName })} right={unread.message > 0 ? <span className="size-2.5 rounded-full bg-rose pop-in" role="status" aria-label={t("nav.new")} /> : undefined} />
+        <TileLink href="/write" icon="penLine" tone="rose" title={t("partner.writeTitle")} text={t("partner.writeCard", { name: herName })} />
       </div>
 
       <div className="flex justify-center pt-2">

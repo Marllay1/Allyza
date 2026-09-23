@@ -5,6 +5,7 @@ import { PartnerHome } from "@/features/home/PartnerHome";
 import { SHARING_KEYS } from "@/lib/constants";
 import { loadHerData } from "@/lib/her-data";
 import { getT } from "@/lib/i18n/server";
+import { getMyNicknameForPartner } from "@/lib/nickname";
 import { requireViewer } from "@/lib/session";
 import { getSupabase } from "@/lib/supabase/request";
 
@@ -17,13 +18,17 @@ export default async function HomePage() {
 
   // The couple is provisioned once (scripts/seed-users.mjs); nobody enters a code or picks a partner.
   const otherId = v.couple ? (v.role === "her" ? v.couple.partnerId : v.couple.herId) : null;
+  const fallback = v.role === "her" ? t("couple.partnerFallback") : t("partner.herFallback");
 
   // Independent queries run together: one round-trip's worth of waiting instead of two.
-  const [{ data: other }, her] = await Promise.all([
-    otherId ? supabase.from("profiles").select("display_name").eq("id", otherId).maybeSingle() : Promise.resolve({ data: null }),
+  const [otherName, her, note] = await Promise.all([
+    getMyNicknameForPartner(otherId, fallback),
     v.role === "her" ? loadHerData(30) : Promise.resolve(EMPTY_HER),
+    v.role === "her"
+      ? supabase.from("custom_content").select("id, category, title, body, created_at")
+          .eq("status", "published").order("created_at", { ascending: false }).limit(1).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
-  const otherName = other?.display_name || (v.role === "her" ? t("couple.partnerFallback") : t("partner.herFallback"));
 
   if (v.role === "partner") return <PartnerHome myName={v.displayName} herName={otherName} />;
 
@@ -39,6 +44,7 @@ export default async function HomePage() {
         sharedCount={sharedCount}
         hasPartner={!!v.couple?.partnerId}
         soft={v.prefs.soft_mode}
+        note={note.data}
       />
     </ClientOnly>
   );

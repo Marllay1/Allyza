@@ -3,12 +3,13 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { fail, isoDate, ok, rateLimit, uuid } from "@/lib/action-utils";
-import { FOOD_CATEGORIES, PAIN_TYPES, SYMPTOMS } from "@/lib/constants";
+import { FOOD_CATEGORIES, MOOD_TAGS, PAIN_TYPES, SYMPTOMS } from "@/lib/constants";
+import { getAuthUser } from "@/lib/supabase/request";
 
 async function authed() {
   const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  return { supabase, uid: data.user?.id ?? null };
+  const user = await getAuthUser();
+  return { supabase, uid: user?.id ?? null };
 }
 const done = () => {
   revalidatePath("/her", "layout");
@@ -20,6 +21,8 @@ const done = () => {
 const notFuture = (d: string) => new Date(d + "T00:00:00Z").getTime() <= Date.now() + 2 * 86_400_000;
 const dateField = isoDate.refine(notFuture);
 
+const timeField = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+
 const logSchema = z.object({
   date: dateField,
   is_period: z.boolean(),
@@ -29,6 +32,11 @@ const logSchema = z.object({
   pain_duration_min: z.number().int().min(0).max(1440).nullable(),
   fatigue: z.number().int().min(0).max(10).nullable(),
   mood: z.number().int().min(1).max(5).nullable(),
+  mood_tag: z.enum(MOOD_TAGS).nullable(),
+  energy: z.number().int().min(0).max(10).nullable(),
+  sleep_bedtime: timeField.nullable(),
+  sleep_wake_time: timeField.nullable(),
+  sleep_quality: z.number().int().min(1).max(5).nullable(),
   sugar_level: z.enum(["low", "moderate", "high"]).nullable(),
   symptoms: z.array(z.enum(SYMPTOMS)).max(SYMPTOMS.length),
   note: z.string().trim().max(1000).nullable(),
@@ -53,6 +61,11 @@ export async function saveDayLogAction(input: DayLogInput) {
       pain_duration_min: d.pain === null ? null : d.pain_duration_min,
       fatigue: d.fatigue,
       mood: d.mood,
+      mood_tag: d.mood_tag,
+      energy: d.energy,
+      sleep_bedtime: d.sleep_bedtime,
+      sleep_wake_time: d.sleep_wake_time,
+      sleep_quality: d.sleep_quality,
       sugar_level: d.sugar_level,
       symptoms: d.symptoms,
       note: d.note || null,

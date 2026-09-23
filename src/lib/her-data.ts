@@ -11,7 +11,7 @@ export async function loadHerData(logDays = 180) {
     supabase.from("periods").select("id, start_date, end_date").order("start_date", { ascending: false }),
     supabase
       .from("daily_logs")
-      .select("id, log_date, is_period, flow, pain, pain_type, pain_duration_min, fatigue, mood, sugar_level, symptoms, note")
+      .select("id, log_date, is_period, flow, pain, pain_type, pain_duration_min, fatigue, mood, mood_tag, energy, sleep_bedtime, sleep_wake_time, sleep_quality, sugar_level, symptoms, note")
       .gte("log_date", since)
       .order("log_date", { ascending: false }),
     supabase.from("food_logs").select("id, log_date, category, note").gte("log_date", since).order("created_at", { ascending: false }),

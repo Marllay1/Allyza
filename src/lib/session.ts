@@ -71,6 +71,13 @@ export async function requireHer(): Promise<Viewer> {
   return v;
 }
 
+/** Writing custom content for her exists only for the partner, and needs a linked couple. */
+export async function requirePartner(): Promise<Viewer & { couple: NonNullable<Viewer["couple"]> }> {
+  const v = await requireCouple();
+  if (v.role !== "partner") redirect("/home");
+  return v as Viewer & { couple: NonNullable<Viewer["couple"]> };
+}
+
 /** Couple pages need a linked couple. Her always has one; the partner only after joining. */
 export async function requireCouple(): Promise<Viewer & { couple: NonNullable<Viewer["couple"]> }> {
   const v = await requireViewer();

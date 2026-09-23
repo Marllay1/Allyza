@@ -80,6 +80,8 @@ export function AppShell({ userId, role, softMode, initialUnread, children }: Pr
   const themeSpace = path.startsWith("/refuge") ? "refuge" : path.startsWith("/us") ? "us" : "her";
   const headerSpace = path.startsWith("/messages") ? "messaging" : path.startsWith("/settings") ? "settings" : path === "/home" ? "home" : themeSpace;
   const usUnread = unread.journal + unread.media + unread.little + unread.surprise;
+  // An open conversation is full-screen: its own header replaces ours, and the bottom nav gets in the way of the composer.
+  const chatOpen = path === "/messages/chat";
 
   const items: { href: string; icon: IconName; label: string; match: string; badge: number }[] =
     role === "her"
@@ -100,48 +102,58 @@ export function AppShell({ userId, role, softMode, initialUnread, children }: Pr
 
   return (
     <UnreadCtx.Provider value={value}>
-      <div data-space={themeSpace} data-soft={softMode ? "on" : "off"} data-night={night ? "on" : "off"} className="room relative min-h-dvh flex flex-col">
-        {themeSpace === "refuge" && <RefugeAtmosphere />}
-        <header className="relative z-20 flex items-center justify-between px-4 pt-[max(0.7rem,env(safe-area-inset-top))] pb-1">
-          <Link href="/home" className="flex items-center gap-2.5" aria-label="Allyza">
-            <AllyzaMark height={34} />
-            <span className="font-display text-2xl tracking-wide lowercase">allyza</span>
-          </Link>
-          <div className="flex items-center gap-1">
-            {night && (
-              <button className="icon-btn text-gold" aria-label={t("night.morning")} title={t("night.morning")} onClick={endNight}>
-                <AppIcon name="sun" size={20} />
+      <div data-space={themeSpace} data-soft={softMode ? "on" : "off"} data-night={night ? "on" : "off"}
+        className={`room relative flex flex-col ${chatOpen ? "h-dvh overflow-hidden" : "min-h-dvh"}`}>
+        {themeSpace === "refuge" && !chatOpen && <RefugeAtmosphere />}
+        {!chatOpen && (
+          <header className="relative z-20 flex items-center justify-between px-4 pt-[max(0.7rem,env(safe-area-inset-top))] pb-1">
+            <Link href="/home" className="flex items-center gap-2.5" aria-label="Allyza">
+              <AllyzaMark height={34} />
+              <span className="font-display text-2xl tracking-wide lowercase">allyza</span>
+            </Link>
+            <div className="flex items-center gap-1">
+              {night && (
+                <button className="icon-btn text-gold" aria-label={t("night.morning")} title={t("night.morning")} onClick={endNight}>
+                  <AppIcon name="sun" size={20} />
+                </button>
+              )}
+              <span className="eyebrow pl-1">{t(`space.${headerSpace}`)}</span>
+            </div>
+          </header>
+        )}
+
+        <main id="main" key={path}
+          className={chatOpen
+            ? "page-enter relative z-10 flex-1 w-full max-w-2xl mx-auto flex flex-col min-h-0"
+            : "page-enter relative z-10 flex-1 w-full max-w-2xl mx-auto px-4 pt-3 pb-36"}>
+          {children}
+        </main>
+
+        {!chatOpen && (
+          <div className="nav-shell">
+            <nav aria-label={t("nav.main")} className="nav-pill glass" data-collapsed={collapsed}>
+              <ul className="nav-items">
+                {items.map((i) => {
+                  const active = path === i.match || path.startsWith(i.match + "/");
+                  return (
+                    <li key={i.href} className="contents">
+                      <Link href={i.href} className="nav-item" aria-current={active ? "page" : undefined} tabIndex={collapsed ? -1 : 0}>
+                        <AppIcon name={i.icon} size={22} />
+                        <span>{i.label}</span>
+                        {i.badge > 0 && <span className="nav-dot" role="status" aria-label={t("nav.new")} />}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+              <button className="nav-compact" onClick={expand} aria-label={t("nav.expand")} tabIndex={collapsed ? 0 : -1}>
+                <AllyzaMark height={26} />
+                <span className="font-display text-xl lowercase">allyza</span>
               </button>
-            )}
-            <span className="eyebrow pl-1">{t(`space.${headerSpace}`)}</span>
+            </nav>
           </div>
-        </header>
-
-        <main id="main" key={path} className="page-enter relative z-10 flex-1 w-full max-w-2xl mx-auto px-4 pt-3 pb-36">{children}</main>
-
-        <div className="nav-shell">
-          <nav aria-label={t("nav.main")} className="nav-pill glass" data-collapsed={collapsed}>
-            <ul className="nav-items">
-              {items.map((i) => {
-                const active = path === i.match || path.startsWith(i.match + "/");
-                return (
-                  <li key={i.href} className="contents">
-                    <Link href={i.href} className="nav-item" aria-current={active ? "page" : undefined} tabIndex={collapsed ? -1 : 0}>
-                      <AppIcon name={i.icon} size={22} />
-                      <span>{i.label}</span>
-                      {i.badge > 0 && <span className="nav-dot" role="status" aria-label={t("nav.new")} />}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-            <button className="nav-compact" onClick={expand} aria-label={t("nav.expand")} tabIndex={collapsed ? 0 : -1}>
-              <AllyzaMark height={26} />
-              <span className="font-display text-xl lowercase">allyza</span>
-            </button>
-          </nav>
-        </div>
-        <GoodNightCurtain />
+        )}
+        {!chatOpen && <GoodNightCurtain />}
       </div>
     </UnreadCtx.Provider>
   );
