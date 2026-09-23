@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { AppIcon } from "@/components/icons";
 import { PasswordForm, SignOutButton } from "@/components/SettingsForms";
+import { AppLockSettings } from "@/features/applock/AppLockSettings";
 import { PageHeader, Section } from "@/components/ui";
+import { getLockRow } from "@/lib/app-lock";
 import { getT } from "@/lib/i18n/server";
 import { requireViewer } from "@/lib/session";
 
@@ -9,6 +11,7 @@ import { requireViewer } from "@/lib/session";
 export default async function AccountPage() {
   const v = await requireViewer();
   const { t } = await getT();
+  const lock = await getLockRow(v.id);
   return (
     <>
       <PageHeader title={t("settings.security")} back="/settings" backLabel={t("common.back")} />
@@ -16,6 +19,9 @@ export default async function AccountPage() {
         <p className="font-display text-2xl">{v.displayName}</p>
         <p className="text-sm text-muted mt-1">{t("account.sessionNote")}</p>
         <div className="mt-4"><SignOutButton /></div>
+      </Section>
+      <Section>
+        <AppLockSettings method={lock?.method ?? null} idleSeconds={lock?.idle_seconds ?? 60} />
       </Section>
       <Section title={t("account.security")}>
         <PasswordForm />

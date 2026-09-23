@@ -241,4 +241,15 @@ await asUser(her.id, async () => {
 });
 check("outsider sees no calls", (await asUser(eve.id, () => q(`select * from calls`))).length === 0);
 
+// App lock: secrets are server-only. A signed-in user (even the owner) can neither read nor write them.
+await db.query(`insert into app_locks(user_id, method, secret_hash) values ('${her.id}','pin','scrypt$16384$8$1$salt$hash')`);
+await db.query(`insert into app_lock_credentials(user_id, credential_id, public_key) values ('${her.id}','cred-1','key')`);
+for (const [who, name] of [[her, "owner"], [him, "partner"], [eve, "outsider"]]) {
+  await asUser(who.id, async () => {
+    await expectFail(`${name} cannot read app_locks`, () => db.query(`select * from app_locks`));
+    await expectFail(`${name} cannot read app_lock_credentials`, () => db.query(`select * from app_lock_credentials`));
+    await expectFail(`${name} cannot write app_locks`, () => db.query(`update app_locks set method='pin'`));
+  });
+}
+
 console.log(process.exitCode ? "\nSOME CHECKS FAILED" : "\nALL CHECKS PASSED");

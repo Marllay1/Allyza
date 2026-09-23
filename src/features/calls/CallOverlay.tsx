@@ -1,7 +1,9 @@
 "use client";
+import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/Avatar";
 import { AppIcon } from "@/components/icons";
 import { Portal } from "@/components/Portal";
+import { useSpeaking } from "@/features/calls/use-speaking";
 import { useI18n } from "@/lib/i18n/provider";
 
 export type CallPhase = "outgoing" | "incoming" | "connecting" | "connected" | "ended";
@@ -17,6 +19,9 @@ export type OverlayProps = {
   notice: string | null;
   muted: boolean;
   cameraOff: boolean;
+  remoteCameraOff: boolean;
+  remoteMuted: boolean;
+  facingUser: boolean;
   canSwitchOutput: boolean;
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
@@ -31,20 +36,115 @@ export type OverlayProps = {
 
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
-function RoundButton({ label, active, onClick, children, danger, good }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode; danger?: boolean; good?: boolean }) {
-  const tone = danger ? "bg-danger text-white" : good ? "bg-good text-white" : active ? "bg-white text-[#3b1f52]" : "bg-white/15 text-white";
+/** Attaches a MediaStream and keeps it playing: some browsers pause a video whose tracks arrive late. */
+function StreamVideo({ stream, muted, mirror, className }: { stream: MediaStream | null; muted?: boolean; mirror?: boolean; className?: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    if (v.srcObject !== stream) v.srcObject = stream;
+    const play = () => { void v.play().catch(() => {}); };
+    play();
+    stream?.addEventListener("addtrack", play);
+    v.addEventListener("loadedmetadata", play);
+    return () => { stream?.removeEventListener("addtrack", play); v.removeEventListener("loadedmetadata", play); };
+  }, [stream]);
+  return <video ref={ref} autoPlay playsInline muted={muted} data-stream={muted ? "muted" : "audible"} className={className} style={mirror ? { transform: "scaleX(-1)" } : undefined} />;
+}
+
+function RoundButton({ label, active, onClick, children, danger, good, big }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode; danger?: boolean; good?: boolean; big?: boolean }) {
+  const tone = danger ? "bg-danger text-white" : good ? "bg-good text-white" : active ? "bg-white text-[#3b1f52]" : "bg-white/15 text-white backdrop-blur-xl border border-white/15";
   return (
     <button type="button" onClick={onClick} aria-label={label} aria-pressed={active}
-      className={`size-14 rounded-full grid place-items-center transition active:scale-95 ${tone}`}>
+      className={`${big ? "size-16" : "size-14"} rounded-full grid place-items-center transition duration-200 active:scale-90 motion-reduce:transition-none ${tone}`}>
       {children}
     </button>
   );
 }
 
+/* ── the floating self-view ─────────────────────────────────────────────── */
+
+type Corner = "tl" | "tr" | "bl" | "br";
+const PIP_W = 112, PIP_H = 150, EDGE = 16, TOP_CLEAR = 104, BOTTOM_CLEAR = 168;
+
+function cornerPos(c: Corner, vw: number, vh: number) {
+  return {
+    x: c.endsWith("l") ? EDGE : vw - PIP_W - EDGE,
+    y: c.startsWith("t") ? TOP_CLEAR : vh - PIP_H - BOTTOM_CLEAR,
+  };
+}
+
+/**
+ * A real floating preview: drag it anywhere, it settles into the nearest corner, and a tap
+ * swaps it with the main view. It's anchored by corner, so rotating the phone keeps it tidy.
+ */
+function FloatingPreview({ stream, muted, mirror, off, fallback, onSwap, label }: { stream: MediaStream | null; muted: boolean; mirror: boolean; off: boolean; fallback: React.ReactNode; onSwap: () => void; label: string }) {
+  const [corner, setCorner] = useState<Corner>("tr");
+  const [pos, setPos] = useState(() => cornerPos("tr", window.innerWidth, window.innerHeight));
+  const [dragging, setDragging] = useState(false);
+  const grab = useRef<{ dx: number; dy: number; sx: number; sy: number; moved: boolean } | null>(null);
+
+  useEffect(() => {
+    const onResize = () => setPos(cornerPos(corner, window.innerWidth, window.innerHeight));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [corner]);
+
+  return (
+    <div role="button" tabIndex={0} aria-label={label}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSwap(); }}
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        grab.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y, sx: e.clientX, sy: e.clientY, moved: false };
+        setDragging(true);
+      }}
+      onPointerMove={(e) => {
+        const g = grab.current;
+        if (!g) return;
+        if (Math.hypot(e.clientX - g.sx, e.clientY - g.sy) > 6) g.moved = true;
+        if (g.moved) setPos({ x: Math.min(Math.max(4, e.clientX - g.dx), window.innerWidth - PIP_W - 4), y: Math.min(Math.max(4, e.clientY - g.dy), window.innerHeight - PIP_H - 4) });
+      }}
+      onPointerUp={() => {
+        const g = grab.current;
+        grab.current = null;
+        setDragging(false);
+        if (!g?.moved) { onSwap(); return; }
+        const vw = window.innerWidth, vh = window.innerHeight;
+        const cx = pos.x + PIP_W / 2, cy = pos.y + PIP_H / 2;
+        const next: Corner = `${cy < vh / 2 ? "t" : "b"}${cx < vw / 2 ? "l" : "r"}`;
+        setCorner(next);
+        setPos(cornerPos(next, vw, vh));
+      }}
+      onPointerCancel={() => { grab.current = null; setDragging(false); }}
+      className={`absolute z-20 touch-none select-none overflow-hidden rounded-[28px] border border-white/25 bg-[#1c1240] shadow-[0_18px_40px_-12px_rgba(0,0,0,0.65)] ring-1 ring-black/20 ${dragging ? "scale-[1.04] cursor-grabbing" : "cursor-grab transition-[left,top,transform] duration-300 ease-[cubic-bezier(.2,.9,.3,1.1)] motion-reduce:transition-none"}`}
+      style={{ left: pos.x, top: pos.y, width: PIP_W, height: PIP_H }}>
+      <StreamVideo stream={stream} muted={muted} mirror={mirror} className={`size-full object-cover transition-opacity duration-300 ${off ? "opacity-0" : "opacity-100"}`} />
+      {off && <div className="absolute inset-0 grid place-items-center bg-[#1c1240]/90">{fallback}</div>}
+    </div>
+  );
+}
+
+/* ── the screen ─────────────────────────────────────────────────────────── */
+
 export function CallOverlay(p: OverlayProps) {
   const { t } = useI18n();
   const video = p.kind === "video";
   const live = p.phase === "connected" || p.phase === "connecting";
+  const speaking = useSpeaking(p.phase === "connected" ? p.remoteStream : null);
+  const [swapped, setSwapped] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const [bump, setBump] = useState(0);
+  const autoHide = video && p.phase === "connected";
+
+  // Controls fade out while you're just watching, and come back on any touch.
+  useEffect(() => {
+    if (!autoHide) return;
+    const id = setTimeout(() => setShowControls(false), 4500);
+    return () => clearTimeout(id);
+  }, [autoHide, bump, showControls]);
+  const controlsVisible = !autoHide || showControls;
+
+  const remoteHasVideo = video && !p.remoteCameraOff && (p.remoteStream?.getVideoTracks().length ?? 0) > 0;
   const status =
     p.phase === "ended" ? p.notice
     : p.phase === "incoming" ? t(video ? "call.incomingVideo" : "call.incomingAudio", { name: p.other.name })
@@ -53,38 +153,73 @@ export function CallOverlay(p: OverlayProps) {
     : p.phase === "connecting" ? t("call.connecting")
     : p.ringing ? t("call.ringing") : t("call.calling");
 
+  const showPreview = video && !!p.localStream && (p.phase === "connecting" || p.phase === "connected" || p.phase === "outgoing");
+  // Main view = the other person. Tap the floating self-view to swap.
+  const mainIsLocal = swapped && showPreview;
+  const bigStream = mainIsLocal ? p.localStream : p.remoteStream;
+  const bigHasVideo = mainIsLocal ? !p.cameraOff : remoteHasVideo;
+
+  const avatarStage = (
+    <div className="grid justify-items-center gap-3 text-center">
+      <div className="relative">
+        {!p.phase.startsWith("ended") && (p.phase === "incoming" || p.phase === "outgoing" || speaking) && (
+          <>
+            <span aria-hidden className="absolute inset-0 rounded-full bg-white/15 animate-ping motion-reduce:hidden" style={{ animationDuration: speaking ? "1.2s" : "2.2s" }} />
+            <span aria-hidden className={`absolute -inset-3 rounded-full border transition ${speaking ? "border-white/60 scale-105" : "border-white/15"}`} />
+          </>
+        )}
+        <div className="relative"><Avatar path={p.other.avatar} tone={p.other.tone} size={132} /></div>
+      </div>
+    </div>
+  );
+
   return (
     <Portal>
       <div role="dialog" aria-modal="true" aria-label={t(video ? "call.videoCall" : "call.audioCall")}
-        className="fixed inset-0 z-[60] flex flex-col items-center justify-between text-white overflow-hidden pt-[max(3rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))]"
-        style={{ background: "radial-gradient(circle at 30% 20%, #3b1f52, #160e33 70%)" }}>
-        {/* The other person's live video fills the screen; audio calls keep the calm portrait instead. */}
-        <video ref={(el) => { if (el && el.srcObject !== p.remoteStream) el.srcObject = p.remoteStream; }} autoPlay playsInline
-          className={video && live ? "absolute inset-0 size-full object-cover" : "hidden"} />
-        {video && live && <div aria-hidden className="absolute inset-0 bg-gradient-to-b from-black/45 via-transparent to-black/55" />}
+        onPointerDown={() => { setShowControls(true); setBump((b) => b + 1); document.querySelectorAll<HTMLVideoElement>("[role=dialog] video").forEach((v) => { if (v.paused) void v.play().catch(() => {}); }); }}
+        className="fixed inset-0 z-[60] overflow-hidden text-white"
+        style={{ background: "radial-gradient(120% 90% at 30% 10%, #4a2a66 0%, #24123f 45%, #120a2a 100%)" }}>
 
-        <div className="relative grid justify-items-center gap-3 pt-6 text-center px-6">
-          {!(video && p.phase === "connected") && (
-            <span className={p.phase === "incoming" || p.phase === "outgoing" ? "pop-in" : ""}><Avatar path={p.other.avatar} tone={p.other.tone} size={104} /></span>
-          )}
-          <p className="font-display text-3xl">{p.other.name}</p>
-          <p className="text-sm opacity-80 tabular-nums" role="status" aria-live="polite">{status}</p>
+        {/* main view: the other person's video, or their portrait when there is no picture to show */}
+        <div className="absolute inset-0 grid place-items-center">{!(bigHasVideo && live) && avatarStage}</div>
+        {video && live && (
+          <StreamVideo stream={bigStream} muted={mainIsLocal} mirror={mainIsLocal && p.facingUser}
+            className={`absolute inset-0 size-full object-cover transition-opacity duration-500 ${bigHasVideo ? "opacity-100" : "opacity-0"}`} />
+        )}
+        {video && live && bigHasVideo && <div aria-hidden className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/60 pointer-events-none" />}
+
+        {/* top: who, and how it's going */}
+        <div className="absolute inset-x-0 top-0 z-10 grid justify-items-center gap-1 px-6 pt-[max(1.25rem,calc(env(safe-area-inset-top)+0.5rem))] text-center pointer-events-none">
+          <p className="font-display text-3xl leading-none drop-shadow inline-flex items-center gap-2">
+            {p.other.name}
+            {p.remoteMuted && p.phase === "connected" && <AppIcon name="micOff" size={16} label={t("call.mute")} />}
+          </p>
+          <p className="text-sm opacity-85 tabular-nums drop-shadow" role="status" aria-live="polite">{status}</p>
+          {video && p.phase === "connected" && p.remoteCameraOff && <p className="text-xs opacity-70">{t("call.remoteCameraOff", { name: p.other.name })}</p>}
         </div>
 
-        {video && p.localStream && p.phase !== "incoming" && p.phase !== "ended" && (
-          <video ref={(el) => { if (el && el.srcObject !== p.localStream) el.srcObject = p.localStream; }} autoPlay playsInline muted
-            className={`absolute right-4 top-[max(5.5rem,calc(env(safe-area-inset-top)+3.5rem))] w-28 aspect-[3/4] rounded-2xl object-cover border border-white/25 shadow-lg ${p.cameraOff ? "opacity-30" : ""}`} />
+        {showPreview && (
+          <FloatingPreview
+            stream={mainIsLocal ? p.remoteStream : p.localStream}
+            muted={!mainIsLocal}
+            mirror={!mainIsLocal && p.facingUser}
+            off={mainIsLocal ? !remoteHasVideo : p.cameraOff}
+            fallback={mainIsLocal ? <Avatar path={p.other.avatar} tone={p.other.tone} size={56} /> : <AppIcon name="videoOff" size={26} />}
+            onSwap={() => setSwapped((s) => !s)}
+            label={t("call.swapViews")}
+          />
         )}
 
-        <div className="relative grid gap-6 justify-items-center pb-4">
+        {/* controls */}
+        <div className={`absolute inset-x-0 bottom-0 z-10 grid justify-items-center gap-5 px-6 pb-[max(1.75rem,calc(env(safe-area-inset-bottom)+0.75rem))] transition duration-300 motion-reduce:transition-none ${controlsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"}`}>
           {p.phase === "incoming" ? (
-            <div className="flex items-center gap-16">
-              <div className="grid justify-items-center gap-2"><RoundButton label={t("call.decline")} danger onClick={p.onDecline}><AppIcon name="callEnd" size={26} /></RoundButton><span className="text-xs opacity-80">{t("call.decline")}</span></div>
-              <div className="grid justify-items-center gap-2"><RoundButton label={t("call.accept")} good onClick={p.onAccept}><AppIcon name={video ? "video" : "call"} size={26} /></RoundButton><span className="text-xs opacity-80">{t("call.accept")}</span></div>
+            <div className="flex items-center gap-20">
+              <div className="grid justify-items-center gap-2"><RoundButton big label={t("call.decline")} danger onClick={p.onDecline}><AppIcon name="callEnd" size={28} /></RoundButton><span className="text-xs opacity-80">{t("call.decline")}</span></div>
+              <div className="grid justify-items-center gap-2"><RoundButton big label={t("call.accept")} good onClick={p.onAccept}><AppIcon name={video ? "video" : "call"} size={28} /></RoundButton><span className="text-xs opacity-80">{t("call.accept")}</span></div>
             </div>
           ) : p.phase === "ended" ? null : (
             <>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3 rounded-full bg-black/25 px-3 py-2.5 backdrop-blur-2xl border border-white/10">
                 <RoundButton label={t("call.mute")} active={p.muted} onClick={p.onToggleMute}><AppIcon name={p.muted ? "micOff" : "mic"} size={22} /></RoundButton>
                 {p.canSwitchOutput && <RoundButton label={t("call.speaker")} onClick={p.onCycleOutput}><AppIcon name="volume" size={22} /></RoundButton>}
                 {video && (
@@ -94,7 +229,7 @@ export function CallOverlay(p: OverlayProps) {
                   </>
                 )}
               </div>
-              <RoundButton label={t("call.end")} danger onClick={p.onHangup}><AppIcon name="callEnd" size={26} /></RoundButton>
+              <RoundButton big label={t("call.end")} danger onClick={p.onHangup}><AppIcon name="callEnd" size={28} /></RoundButton>
             </>
           )}
         </div>

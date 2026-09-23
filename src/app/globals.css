@@ -301,3 +301,6 @@ textarea.field { min-height: 96px; resize: vertical; }
 [data-soft="on"] { --shadow: none; }
 
 .safe-b { padding-bottom: env(safe-area-inset-bottom); }
+
+/* App lock: blank the screen the moment Allyza is backgrounded, so the OS app-switcher shows nothing private. */
+html.app-privacy body::after { content: ""; position: fixed; inset: 0; z-index: 2147483000; background: var(--bg, #0f0a22); }

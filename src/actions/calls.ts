@@ -3,37 +3,59 @@ import { z } from "zod";
 import { fail, ok, rateLimit, uuid } from "@/lib/action-utils";
 import { coupleCtx } from "@/lib/couple-ctx";
 import { pingPartner } from "@/lib/push";
+import { createHmac } from "node:crypto";
 
 const STUN_FALLBACK: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
+type RawIce = { urls?: string | string[]; username?: string; credential?: string };
+const normalize = (list: RawIce[]): RTCIceServer[] =>
+  list
+    // Cloudflare advertises port 53 as well; Firefox stalls on it, and the other ports cover every network.
+    .map((s) => ({ ...s, urls: ([] as string[]).concat(s.urls ?? []).filter((u) => !/:53(\?|$)/.test(u)) }))
+    .filter((s) => s.urls.length > 0) as RTCIceServer[];
+
 /**
- * Temporary, time-limited TURN credentials for this call only — minted server-side from
- * Twilio's Network Traversal Service so the account secret never reaches the browser.
- * Without TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN configured, calls still work over STUN
- * alone (fine on the same network or many home routers; not reliable across all NATs).
+ * ICE servers for one call. STUN alone connects same-network and many home-router calls; a TURN
+ * relay is what makes Wi-Fi <-> 4G and 4G <-> 4G reliable. Two open, no-lock-in ways to get one,
+ * both minting short-lived credentials on the server so no long-lived secret reaches the browser:
+ *  1. Cloudflare Realtime TURN (free tier, no server to run):  CLOUDFLARE_TURN_KEY_ID + CLOUDFLARE_TURN_API_TOKEN
+ *  2. Your own coturn (open source) with `use-auth-secret`:      TURN_URLS + TURN_SHARED_SECRET
+ * With neither configured it falls back to public STUN.
  */
 export async function getIceServersAction() {
   const c = await coupleCtx();
   if (!c) return fail("auth");
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  if (!sid || !token) return ok(STUN_FALLBACK);
-  try {
-    const auth = Buffer.from(`${sid}:${token}`).toString("base64");
-    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Tokens.json`, {
-      method: "POST",
-      headers: { Authorization: `Basic ${auth}` },
-      cache: "no-store",
-    });
-    if (!res.ok) return ok(STUN_FALLBACK);
-    const data = (await res.json()) as { ice_servers?: { url?: string; urls?: string; username?: string; credential?: string }[] };
-    const servers: RTCIceServer[] = (data.ice_servers ?? [])
-      .map((s) => ({ urls: s.urls ?? s.url ?? "", username: s.username, credential: s.credential }))
-      .filter((s) => s.urls);
-    return ok(servers.length ? servers : STUN_FALLBACK);
-  } catch {
-    return ok(STUN_FALLBACK);
+
+  const keyId = process.env.CLOUDFLARE_TURN_KEY_ID;
+  const token = process.env.CLOUDFLARE_TURN_API_TOKEN;
+  if (keyId && token) {
+    try {
+      const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${keyId}/credentials/generate-ice-servers`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ ttl: 3 * 3600 }),
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { iceServers?: RawIce | RawIce[] };
+        const servers = normalize(([] as RawIce[]).concat(data.iceServers ?? []));
+        if (servers.length) return ok(servers);
+      }
+      console.error(`[calls] Cloudflare TURN credentials failed: HTTP ${res.status}`);
+    } catch (e) {
+      console.error("[calls] Cloudflare TURN unreachable:", e);
+    }
   }
+
+  const urls = process.env.TURN_URLS?.split(",").map((u) => u.trim()).filter(Boolean);
+  const secret = process.env.TURN_SHARED_SECRET;
+  if (urls?.length && secret) {
+    const username = `${Math.floor(Date.now() / 1000) + 3 * 3600}:${c.uid}`;
+    const credential = createHmac("sha1", secret).update(username).digest("base64");
+    return ok([...STUN_FALLBACK, { urls, username, credential }]);
+  }
+
+  return ok(STUN_FALLBACK);
 }
 
 export async function startCallAction(input: { kind: "audio" | "video" }) {
@@ -61,7 +83,7 @@ export async function startCallAction(input: { kind: "audio" | "video" }) {
     .select("id, caller_id, callee_id, kind, status, started_at")
     .single();
   if (error || !data) return fail("generic");
-  void pingPartner("call");
+  pingPartner("call", { callId: data.id });
   return ok(data);
 }
 
@@ -75,11 +97,14 @@ export async function updateCallStatusAction(input: z.infer<typeof statusInput>)
   if (!p.success) return fail("invalid");
   const c = await coupleCtx();
   if (!c) return fail("auth");
+  const { data: row } = await c.supabase.from("calls").select("caller_id, answered_at").eq("id", p.data.id).eq("couple_id", c.couple.id).maybeSingle();
   const patch: Record<string, string> = { status: p.data.status };
   if (p.data.status === "accepted") patch.answered_at = new Date().toISOString();
   if (p.data.status !== "accepted") patch.ended_at = new Date().toISOString();
   const { error } = await c.supabase.from("calls").update(patch).eq("id", p.data.id).eq("couple_id", c.couple.id);
   if (error) return fail("generic");
+  // The caller gave up (or it rang out) before anyone answered: leave a "missed call" notice on the other phone.
+  if (row && row.caller_id === c.uid && !row.answered_at && (p.data.status === "missed" || p.data.status === "cancelled")) pingPartner("missed_call", { callId: p.data.id });
   return ok();
 }
 

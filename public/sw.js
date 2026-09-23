@@ -4,7 +4,7 @@
  *   • Pages, API calls, Supabase traffic, signed photo URLs are NEVER cached,
  *     so no health data or private photo ever lands in Cache Storage.
  * Push payloads carry a "kind" and a language only — never message content. */
-const VERSION = "allyza-v3";
+const VERSION = "allyza-v4";
 const SHELL = ["/offline", "/icons/icon-192.png", "/icons/icon-512.png", "/brand/mark-dark.png", "/brand/mark-light.png"];
 
 self.addEventListener("install", (e) => {
@@ -48,6 +48,7 @@ self.addEventListener("fetch", (e) => {
   }
 });
 
+// {name} is the sender as the RECIPIENT calls them (their own nickname). Never any message content.
 const COPY = {
   fr: {
     journal: "Quelqu’un a écrit dans votre carnet",
@@ -55,8 +56,9 @@ const COPY = {
     refuge: "Un petit mot vous attend dans le Refuge",
     little: "Une petite attention vous attend",
     surprise: "Une petite surprise vous attend",
-    message: "Vous avez un nouveau message",
-    call: "Vous avez un appel entrant",
+    message: "{name} vous a écrit",
+    call: "{name} vous appelle",
+    missed_call: "Appel manqué de {name}",
   },
   en: {
     journal: "Someone wrote in your journal",
@@ -64,11 +66,13 @@ const COPY = {
     refuge: "A little note is waiting for you in the Refuge",
     little: "A little something is waiting for you",
     surprise: "A little surprise is waiting for you",
-    message: "You have a new message",
-    call: "You have an incoming call",
+    message: "{name} sent you a message",
+    call: "{name} is calling you",
+    missed_call: "Missed call from {name}",
   },
 };
-const TARGET = { journal: "/us/journal", media: "/us/memories", refuge: "/refuge/messages", little: "/us/little", surprise: "/us/surprises", message: "/messages", call: "/messages" };
+const FALLBACK_NAME = { fr: "Quelqu’un", en: "Someone" };
+const TARGET = { journal: "/us/journal", media: "/us/memories", refuge: "/refuge/messages", little: "/us/little", surprise: "/us/surprises", message: "/messages/chat", call: "/messages/chat", missed_call: "/messages/chat" };
 
 self.addEventListener("push", (e) => {
   let data = {};
@@ -77,16 +81,21 @@ self.addEventListener("push", (e) => {
   } catch {}
   const lang = data.lang === "en" ? "en" : "fr";
   const kind = COPY[lang][data.kind] ? data.kind : "journal";
+  const body = COPY[lang][kind].replace("{name}", data.name || FALLBACK_NAME[lang]);
+  const isCall = kind === "call";
+  // Calls and their "missed" follow-up share one tag, so the missed-call notice replaces the ringing one.
+  const tag = kind === "call" || kind === "missed_call" ? "allyza-call" : "allyza-" + kind;
   e.waitUntil(
     self.registration.showNotification("Allyza", {
-      body: COPY[lang][kind],
+      body,
       icon: "/icons/icon-192.png",
       badge: "/icons/favicon-48.png",
-      tag: "allyza-" + kind,
-      // A call is urgent: keep it on screen until it's answered or dismissed, and buzz.
-      requireInteraction: kind === "call",
-      vibrate: kind === "call" ? [300, 150, 300, 150, 300] : undefined,
-      data: { url: TARGET[kind] },
+      tag,
+      renotify: true,
+      // A ringing call stays on screen until answered or dismissed, and buzzes.
+      requireInteraction: isCall,
+      vibrate: isCall ? [300, 150, 300, 150, 300, 150, 300] : [120],
+      data: { url: TARGET[kind], kind, callId: data.callId || null, sentAt: Date.now() },
     }),
   );
 });
@@ -95,8 +104,16 @@ self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   const url = (e.notification.data && e.notification.data.url) || "/home";
   e.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
-      for (const c of list) if ("focus" in c) return c.navigate(url).then(() => c.focus());
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (list) => {
+      for (const c of list) {
+        if (!("focus" in c)) continue;
+        try {
+          await c.focus();
+          // Same-origin navigation; if the browser refuses, fall through and open a window instead.
+          if ("navigate" in c) await c.navigate(url);
+          return;
+        } catch {}
+      }
       return self.clients.openWindow(url);
     }),
   );

@@ -8,13 +8,13 @@ import { CallOverlay, type CallPerson, type CallPhase } from "@/features/calls/C
 import { useRing } from "@/features/calls/use-ring";
 
 type Kind = "audio" | "video";
-type Signal = { callId: string; from: string; type: "ringing" | "offer" | "answer" | "ice" | "hangup" | "reject"; sdp?: string; candidate?: RTCIceCandidateInit };
+type Signal = { callId: string; from: string; type: "ringing" | "offer" | "answer" | "ice" | "hangup" | "reject" | "media"; sdp?: string; candidate?: RTCIceCandidateInit; muted?: boolean; cameraOff?: boolean };
 type CallRow = { id: string; caller_id: string; callee_id: string; kind: Kind; status: string; started_at: string };
 
 /** Everything one live call needs that shouldn't cause a re-render when it changes. */
 type Live = {
   id: string; kind: Kind; role: "caller" | "callee";
-  answered: boolean; offerSdp: string | null; lastOffer: string | null;
+  answered: boolean; acked: boolean; offerSdp: string | null; lastOffer: string | null;
   sentIce: RTCIceCandidateInit[]; remoteIce: RTCIceCandidateInit[];
   connectedAt: number | null; iceRestarts: number;
   timers: ReturnType<typeof setTimeout>[]; intervals: ReturnType<typeof setInterval>[];
@@ -39,6 +39,9 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
   const [outputs, setOutputs] = useState(0);
+  const [remoteCameraOff, setRemoteCameraOff] = useState(false);
+  const [remoteMuted, setRemoteMuted] = useState(false);
+  const [facingUser, setFacingUser] = useState(true);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
@@ -75,6 +78,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     outputIdx.current = 0;
     setLocalStream(null); setRemoteStream(null);
     setRinging(false); setReconnecting(false); setMuted(false); setCameraOff(false); setElapsed(0); setOutputs(0);
+    setRemoteCameraOff(false); setRemoteMuted(false); setFacingUser(true);
     if (dismiss.current) clearTimeout(dismiss.current);
     if (message) {
       setNotice(message); setPhase("ended");
@@ -93,9 +97,16 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     const r = await getIceServersAction();
     const iceServers = r.ok ? (r.data as RTCIceServer[]) : [{ urls: "stun:stun.l.google.com:19302" }];
     const p = new RTCPeerConnection({ iceServers, bundlePolicy: "max-bundle" });
-    const remote = new MediaStream();
+    const fallback = new MediaStream();
     stream.getTracks().forEach((tr) => p.addTrack(tr, stream));
-    p.ontrack = (e) => { if (!remote.getTracks().includes(e.track)) remote.addTrack(e.track); setRemoteStream(remote); };
+    // The browser hands over the remote party's own stream (audio + video together); building one by hand
+    // is the fallback and was the fragile part on Safari, where a track added afterwards may never render.
+    p.ontrack = (e) => {
+      const incoming = e.streams[0];
+      if (incoming) { setRemoteStream(incoming); return; }
+      if (!fallback.getTracks().includes(e.track)) fallback.addTrack(e.track);
+      setRemoteStream(fallback);
+    };
     p.onicecandidate = (e) => {
       if (!e.candidate || !live.current) return;
       const cand = e.candidate.toJSON();
@@ -115,6 +126,9 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
           navigator.mediaDevices.enumerateDevices().then((d) => setOutputs(d.filter((x) => x.kind === "audiooutput").length)).catch(() => {});
         }
         setPhase("connected");
+        const audio = local.current?.getAudioTracks()[0];
+        const video = local.current?.getVideoTracks()[0];
+        send("media", { muted: audio ? !audio.enabled : false, cameraOff: video ? !video.enabled : false });
       } else if (p.connectionState === "disconnected" || p.connectionState === "failed") {
         setReconnecting(true);
         // The caller drives ICE restarts (new network, Wi-Fi ↔ 4G); if nothing recovers in time, the call ends honestly.
@@ -149,7 +163,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     const status = reason === "failed" ? "failed" : reason === "missed" ? "missed" : c.role === "caller" && !c.answered ? "cancelled" : "ended";
     send("hangup");
     void updateCallStatusAction({ id: c.id, status });
-    cleanup(reason === "failed" ? t("call.failed") : reason === "missed" ? t("call.noAnswer", { name: otherName }) : null);
+    cleanup(reason === "failed" ? t("call.failed") : reason === "missed" ? t(c.acked ? "call.noAnswer" : "call.unreachable", { name: otherName }) : null);
   }, [cleanup, otherName, send, t]);
 
   useEffect(() => { endRef.current = endCall; }, [endCall]);
@@ -164,7 +178,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     const created = await startCallAction({ kind: k });
     if (!created.ok) { stream.getTracks().forEach((tr) => tr.stop()); cleanup(t(`errors.${created.error}`)); return; }
     const id = (created.data as { id: string }).id;
-    live.current = { id, kind: k, role: "caller", answered: false, offerSdp: null, lastOffer: null, sentIce: [], remoteIce: [], connectedAt: null, iceRestarts: 0, timers: [], intervals: [] };
+    live.current = { id, kind: k, role: "caller", answered: false, acked: false, offerSdp: null, lastOffer: null, sentIce: [], remoteIce: [], connectedAt: null, iceRestarts: 0, timers: [], intervals: [] };
     local.current = stream;
     setLocalStream(stream);
     try {
@@ -231,7 +245,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
   const showIncoming = useCallback((row: CallRow) => {
     if (live.current || row.callee_id !== myId || row.status !== "ringing") return;
     if (dismiss.current) clearTimeout(dismiss.current);
-    live.current = { id: row.id, kind: row.kind, role: "callee", answered: false, offerSdp: null, lastOffer: null, sentIce: [], remoteIce: [], connectedAt: null, iceRestarts: 0, timers: [], intervals: [] };
+    live.current = { id: row.id, kind: row.kind, role: "callee", answered: false, acked: false, offerSdp: null, lastOffer: null, sentIce: [], remoteIce: [], connectedAt: null, iceRestarts: 0, timers: [], intervals: [] };
     setKind(row.kind); setNotice(null); setPhase("incoming");
     send("ringing");
     live.current.timers.push(setTimeout(() => { if (live.current?.id === row.id && !live.current.answered) cleanup(t("call.missed", { name: otherName })); }, STALE_RING_MS));
@@ -245,6 +259,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
       switch (m.type) {
         case "ringing":
           if (c.role === "caller" && !c.answered) {
+            c.acked = true;
             setRinging(true);
             if (c.offerSdp) { send("offer", { sdp: c.offerSdp }); c.sentIce.forEach((cand) => send("ice", { candidate: cand })); }
           }
@@ -275,6 +290,10 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
           if (!m.candidate) break;
           if (p && p.remoteDescription) void p.addIceCandidate(m.candidate).catch(() => {});
           else c.remoteIce.push(m.candidate);
+          break;
+        case "media":
+          if (m.muted !== undefined) setRemoteMuted(m.muted);
+          if (m.cameraOff !== undefined) setRemoteCameraOff(m.cameraOff);
           break;
         case "reject":
           if (c.role === "caller") cleanup(t("call.declined", { name: otherName }));
@@ -335,12 +354,14 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     if (!tr) return;
     tr.enabled = !tr.enabled;
     setMuted(!tr.enabled);
+    send("media", { muted: !tr.enabled });
   };
   const toggleCamera = () => {
     const tr = local.current?.getVideoTracks()[0];
     if (!tr) return;
     tr.enabled = !tr.enabled;
     setCameraOff(!tr.enabled);
+    send("media", { cameraOff: !tr.enabled });
   };
   const flipCamera = async () => {
     const stream = local.current;
@@ -355,6 +376,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
       stream.getVideoTracks().forEach((old) => { stream.removeTrack(old); old.stop(); });
       stream.addTrack(track);
       facing.current = next;
+      setFacingUser(next === "user");
       setLocalStream(new MediaStream(stream.getTracks()));
     } catch { /* keep the current camera */ }
   };
@@ -377,7 +399,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
         <CallOverlay
           phase={phase} kind={kind} other={other} ringing={ringing} reconnecting={reconnecting} elapsed={elapsed} notice={notice}
           muted={muted} cameraOff={cameraOff} canSwitchOutput={outputs > 1 && typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype}
-          localStream={localStream} remoteStream={remoteStream}
+          localStream={localStream} remoteStream={remoteStream} remoteCameraOff={remoteCameraOff} remoteMuted={remoteMuted} facingUser={facingUser}
           onAccept={() => void accept()} onDecline={decline} onHangup={() => endCall("hangup")}
           onToggleMute={toggleMute} onToggleCamera={toggleCamera} onFlipCamera={() => void flipCamera()} onCycleOutput={() => void cycleOutput()}
         />
