@@ -8,7 +8,7 @@ import { CallOverlay, type CallPerson, type CallPhase } from "@/features/calls/C
 import { useRing } from "@/features/calls/use-ring";
 
 type Kind = "audio" | "video";
-type Signal = { callId: string; from: string; type: "ringing" | "offer" | "answer" | "ice" | "hangup" | "reject" | "media"; sdp?: string; candidate?: RTCIceCandidateInit; muted?: boolean; cameraOff?: boolean };
+type Signal = { callId: string; from: string; type: "ringing" | "offer" | "answer" | "ice" | "hangup" | "reject" | "media"; sdp?: string; candidate?: RTCIceCandidateInit; muted?: boolean; cameraOff?: boolean; kind?: Kind };
 type CallRow = { id: string; caller_id: string; callee_id: string; kind: Kind; status: string; started_at: string };
 
 /** Everything one live call needs that shouldn't cause a re-render when it changes. */
@@ -39,6 +39,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
   const [outputs, setOutputs] = useState(0);
+  const [speakerOn, setSpeakerOn] = useState(false);
   const [remoteCameraOff, setRemoteCameraOff] = useState(false);
   const [remoteMuted, setRemoteMuted] = useState(false);
   const [facingUser, setFacingUser] = useState(true);
@@ -51,6 +52,8 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
   const chan = useRef<RealtimeChannel | null>(null);
   const facing = useRef<"user" | "environment">("user");
   const outputIdx = useRef(0);
+  const closedIds = useRef<Set<string>>(new Set());
+  const ice = useRef<{ servers: RTCIceServer[]; at: number } | null>(null);
   const dismiss = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onSignal = useRef<(s: Signal) => void>(() => {});
   const endRef = useRef<(reason?: "hangup" | "failed" | "missed") => void>(() => {});
@@ -61,7 +64,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
   const send = useCallback((type: Signal["type"], extra: Partial<Signal> = {}) => {
     const c = live.current;
     if (!c) return;
-    void chan.current?.send({ type: "broadcast", event: "signal", payload: { callId: c.id, from: myId, type, ...extra } satisfies Signal });
+    void chan.current?.send({ type: "broadcast", event: "signal", payload: { callId: c.id, from: myId, type, kind: c.kind, ...extra } satisfies Signal });
   }, [myId]);
 
   const cleanup = useCallback((message: string | null) => {
@@ -76,8 +79,9 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     local.current = null;
     facing.current = "user";
     outputIdx.current = 0;
+    if (c) closedIds.current.add(c.id);
     setLocalStream(null); setRemoteStream(null);
-    setRinging(false); setReconnecting(false); setMuted(false); setCameraOff(false); setElapsed(0); setOutputs(0);
+    setRinging(false); setReconnecting(false); setMuted(false); setCameraOff(false); setElapsed(0); setOutputs(0); setSpeakerOn(false);
     setRemoteCameraOff(false); setRemoteMuted(false); setFacingUser(true);
     if (dismiss.current) clearTimeout(dismiss.current);
     if (message) {
@@ -92,11 +96,21 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
       video: k === "video" ? { facingMode: face, width: { ideal: 1280 }, height: { ideal: 720 } } : false,
     }), []);
 
+  /** TURN credentials last hours: fetched once ahead of time instead of on the critical path of every call. */
+  const getIce = useCallback(async () => {
+    const cached = ice.current;
+    if (cached && Date.now() - cached.at < 2 * 3600_000) return cached.servers;
+    const r = await getIceServersAction();
+    if (!r.ok) return [{ urls: "stun:stun.l.google.com:19302" }] as RTCIceServer[];
+    ice.current = { servers: r.data as RTCIceServer[], at: Date.now() };
+    return ice.current.servers;
+  }, []);
+
   /** Builds the peer connection with STUN + short-lived TURN credentials minted server-side. */
   const buildPeer = useCallback(async (stream: MediaStream) => {
-    const r = await getIceServersAction();
-    const iceServers = r.ok ? (r.data as RTCIceServer[]) : [{ urls: "stun:stun.l.google.com:19302" }];
-    const p = new RTCPeerConnection({ iceServers, bundlePolicy: "max-bundle" });
+    const iceServers = await getIce();
+    // A small candidate pool is gathered up front, so the media path is ready sooner once the call is answered.
+    const p = new RTCPeerConnection({ iceServers, bundlePolicy: "max-bundle", iceCandidatePoolSize: 2 });
     const fallback = new MediaStream();
     stream.getTracks().forEach((tr) => p.addTrack(tr, stream));
     // The browser hands over the remote party's own stream (audio + video together); building one by hand
@@ -147,7 +161,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     };
     pc.current = p;
     return p;
-  }, [send]);
+  }, [getIce, send]);
 
   const flushRemoteIce = useCallback(async (p: RTCPeerConnection) => {
     const c = live.current;
@@ -167,6 +181,19 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
   }, [cleanup, otherName, send, t]);
 
   useEffect(() => { endRef.current = endCall; }, [endCall]);
+  useEffect(() => { if (other) void getIce(); }, [other, getIce]);
+
+  // A screen that dims or locks mid-call suspends the page and cuts the audio: keep it awake while connected.
+  useEffect(() => {
+    if (phase !== "connected" || !("wakeLock" in navigator)) return;
+    let lock: WakeLockSentinel | null = null;
+    let stopped = false;
+    const acquire = () => navigator.wakeLock.request("screen").then((l) => { if (stopped) void l.release(); else lock = l; }).catch(() => {});
+    void acquire();
+    const onVisible = () => { if (document.visibilityState === "visible") void acquire(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { stopped = true; document.removeEventListener("visibilitychange", onVisible); void lock?.release().catch(() => {}); };
+  }, [phase]);
 
   const startCall = useCallback(async (k: Kind) => {
     if (live.current || (phase !== "idle" && phase !== "ended")) return;
@@ -243,7 +270,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
   }, [cleanup, send]);
 
   const showIncoming = useCallback((row: CallRow) => {
-    if (live.current || row.callee_id !== myId || row.status !== "ringing") return;
+    if (live.current || row.callee_id !== myId || row.status !== "ringing" || closedIds.current.has(row.id)) return;
     if (dismiss.current) clearTimeout(dismiss.current);
     live.current = { id: row.id, kind: row.kind, role: "callee", answered: false, acked: false, offerSdp: null, lastOffer: null, sentIce: [], remoteIce: [], connectedAt: null, iceRestarts: 0, timers: [], intervals: [] };
     setKind(row.kind); setNotice(null); setPhase("incoming");
@@ -253,8 +280,15 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
 
   useEffect(() => {
     onSignal.current = (m: Signal) => {
+      if (m.from === myId) return;
+      // The first offer over the broadcast channel rings the phone at once; the database row only backs it up.
+      if (!live.current && m.type === "offer" && m.kind && m.sdp && !closedIds.current.has(m.callId)) {
+        showIncoming({ id: m.callId, caller_id: m.from, callee_id: myId, kind: m.kind, status: "ringing", started_at: new Date().toISOString() });
+        if (live.current) (live.current as Live).offerSdp = m.sdp;
+        return;
+      }
       const c = live.current;
-      if (m.from === myId || !c || m.callId !== c.id) return;
+      if (!c || m.callId !== c.id) return;
       const p = pc.current;
       switch (m.type) {
         case "ringing":
@@ -342,13 +376,6 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coupleId, myId, other?.id]);
 
-  // Leaving the page mid-call ends it rather than leaving the other person on a dead line.
-  useEffect(() => {
-    const bye = () => { const c = live.current; if (c) { send("hangup"); void updateCallStatusAction({ id: c.id, status: c.role === "caller" && !c.answered ? "cancelled" : "ended" }); } };
-    window.addEventListener("pagehide", bye);
-    return () => window.removeEventListener("pagehide", bye);
-  }, [send]);
-
   const toggleMute = () => {
     const tr = local.current?.getAudioTracks()[0];
     if (!tr) return;
@@ -384,9 +411,12 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     try {
       const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "audiooutput");
       if (devices.length < 2) return;
-      outputIdx.current = (outputIdx.current + 1) % devices.length;
-      const el = document.querySelector<HTMLVideoElement & { setSinkId?: (id: string) => Promise<void> }>("video:not([muted])");
-      await el?.setSinkId?.(devices[outputIdx.current].deviceId);
+      const next = (outputIdx.current + 1) % devices.length;
+      const el = document.querySelector<HTMLVideoElement & { setSinkId?: (id: string) => Promise<void> }>('video[data-stream="audible"]');
+      if (!el?.setSinkId) return;
+      await el.setSinkId(devices[next].deviceId);
+      outputIdx.current = next;
+      setSpeakerOn(next !== 0);
     } catch { /* unsupported on this browser */ }
   };
 
@@ -398,7 +428,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
       {other && phase !== "idle" && (
         <CallOverlay
           phase={phase} kind={kind} other={other} ringing={ringing} reconnecting={reconnecting} elapsed={elapsed} notice={notice}
-          muted={muted} cameraOff={cameraOff} canSwitchOutput={outputs > 1 && typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype}
+          muted={muted} cameraOff={cameraOff} speakerOn={speakerOn} canSwitchOutput={outputs > 1 && typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype}
           localStream={localStream} remoteStream={remoteStream} remoteCameraOff={remoteCameraOff} remoteMuted={remoteMuted} facingUser={facingUser}
           onAccept={() => void accept()} onDecline={decline} onHangup={() => endCall("hangup")}
           onToggleMute={toggleMute} onToggleCamera={toggleCamera} onFlipCamera={() => void flipCamera()} onCycleOutput={() => void cycleOutput()}

@@ -2,7 +2,8 @@
 import { useCallback, useRef, useState } from "react";
 import { useIsClient } from "@/lib/local-pref";
 
-const CANDIDATE_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/aac"];
+// MP4/AAC first: it plays on every iPhone, whereas WebM is not readable by older Safari (a voice note that arrives "empty").
+const CANDIDATE_TYPES = ["audio/mp4", "audio/aac", "audio/webm;codecs=opus", "audio/webm"];
 const pickMimeType = () => (typeof MediaRecorder === "undefined" ? null : CANDIDATE_TYPES.find((t) => MediaRecorder.isTypeSupported(t)) ?? null);
 
 export type RecorderState = "idle" | "recording" | "ready" | "denied";
@@ -42,7 +43,7 @@ export function useVoiceRecorder() {
       const s = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.current = s;
       const mime = pickMimeType()!;
-      const mr = new MediaRecorder(s, { mimeType: mime });
+      const mr = new MediaRecorder(s, { mimeType: mime, audioBitsPerSecond: 32000 });
       chunks.current = [];
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunks.current.push(e.data); };
       mr.start(100);
@@ -77,8 +78,9 @@ export function useVoiceRecorder() {
     mr.onstop = () => {
       cleanup();
       if (!discard && chunks.current.length) {
-        const b = new Blob(chunks.current, { type: mr.mimeType });
-        setBlob({ blob: b, mime: mr.mimeType, ms: finalMs });
+        const type = mr.mimeType || chunks.current[0]?.type || pickMimeType() || "audio/mp4";
+        const b = new Blob(chunks.current, { type });
+        setBlob({ blob: b, mime: type, ms: finalMs });
         setPreviewUrl(URL.createObjectURL(b));
       }
       setState(discard ? "idle" : "ready");

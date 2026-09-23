@@ -23,6 +23,7 @@ export type OverlayProps = {
   remoteMuted: boolean;
   facingUser: boolean;
   canSwitchOutput: boolean;
+  speakerOn: boolean;
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
   onAccept: () => void;
@@ -130,7 +131,8 @@ export function CallOverlay(p: OverlayProps) {
   const { t } = useI18n();
   const video = p.kind === "video";
   const live = p.phase === "connected" || p.phase === "connecting";
-  const speaking = useSpeaking(p.phase === "connected" ? p.remoteStream : null);
+  // The talking glow taps the remote audio through a second audio context, which can mute it on iOS: off.
+  const speaking = useSpeaking(null);
   const [swapped, setSwapped] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [bump, setBump] = useState(0);
@@ -225,7 +227,7 @@ export function CallOverlay(p: OverlayProps) {
             <>
               <div className="flex items-center gap-3 rounded-full bg-black/25 px-3 py-2.5 backdrop-blur-2xl border border-white/10">
                 <RoundButton label={t("call.mute")} active={p.muted} onClick={p.onToggleMute}><AppIcon name={p.muted ? "micOff" : "mic"} size={22} /></RoundButton>
-                {p.canSwitchOutput && <RoundButton label={t("call.speaker")} onClick={p.onCycleOutput}><AppIcon name="volume" size={22} /></RoundButton>}
+                {p.canSwitchOutput && <RoundButton label={t("call.speaker")} active={p.speakerOn} onClick={p.onCycleOutput}><AppIcon name="volume" size={22} /></RoundButton>}
                 {video && (
                   <>
                     <RoundButton label={t("call.cameraToggle")} active={p.cameraOff} onClick={p.onToggleCamera}><AppIcon name={p.cameraOff ? "videoOff" : "video"} size={22} /></RoundButton>

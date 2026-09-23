@@ -444,13 +444,13 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
             </div>
             <span className="tabular-nums text-sm">{fmtDur(recorder.ms)}</span>
             <button type="button" className="icon-btn text-muted" aria-label={t("common.cancel")} onClick={() => recorder.stop(true)}><AppIcon name="close" size={18} /></button>
-            <button type="button" className="icon-btn bg-accent text-accent-ink" aria-label={t("messaging.stopRecording")} onClick={() => recorder.stop(false)}><AppIcon name="check" size={18} /></button>
+            <button type="button" className="btn btn-primary !min-h-10 !px-3.5 shrink-0" aria-label={t("messaging.stopRecording")} onClick={() => recorder.stop(false)}><AppIcon name="check" size={18} /></button>
           </div>
         ) : recorder.blob ? (
           <div className="flex items-center gap-2">
             <div className="flex-1"><AudioPlayer url={recorder.previewUrl ?? undefined} durationMs={recorder.blob.ms} mine={false} /></div>
-            <button type="button" className="icon-btn text-muted" aria-label={t("common.delete")} onClick={recorder.reset}><AppIcon name="trash" size={18} /></button>
-            <button type="button" className="btn btn-primary !px-4 shrink-0" onClick={sendVoice} disabled={busy} aria-label={t("common.send")}><AppIcon name="send" size={18} /></button>
+            <button type="button" className="icon-btn !size-10 shrink-0 text-muted" aria-label={t("common.delete")} onClick={recorder.reset}><AppIcon name="trash" size={18} /></button>
+            <button type="button" className="btn btn-primary !min-h-10 !px-3.5 shrink-0" onClick={sendVoice} disabled={busy} aria-label={t("common.send")}><AppIcon name="send" size={19} /></button>
           </div>
         ) : (
           <div className="flex items-end gap-1.5">

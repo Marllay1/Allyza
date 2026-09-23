@@ -67,15 +67,20 @@ export async function startCallAction(input: { kind: "audio" | "video" }) {
   if (!rateLimit(`call:${c.uid}`, 20, 60_000)) return fail("rate");
   const calleeId = c.uid === c.couple.her_id ? c.couple.partner_id : c.couple.her_id;
 
-  // A call that never got closed (app killed mid-ring, phone died) must not block every future call.
-  const now = Date.now();
-  await c.supabase.from("calls").update({ status: "missed", ended_at: new Date(now).toISOString() })
-    .eq("couple_id", c.couple.id).eq("status", "ringing").lt("started_at", new Date(now - 90_000).toISOString());
-  await c.supabase.from("calls").update({ status: "ended", ended_at: new Date(now).toISOString() })
-    .eq("couple_id", c.couple.id).eq("status", "accepted").lt("answered_at", new Date(now - 4 * 3600_000).toISOString());
-
-  const { data: active } = await c.supabase.from("calls").select("id").eq("couple_id", c.couple.id).in("status", ["ringing", "accepted"]).limit(1);
-  if (active?.length) return fail("busy");
+  const activeQuery = () => c.supabase.from("calls").select("id").eq("couple_id", c.couple.id).in("status", ["ringing", "accepted"]).limit(1);
+  const { data: active } = await activeQuery();
+  if (active?.length) {
+    // A call that never got closed (app killed mid-ring, phone died) must not block every future call.
+    const now = Date.now();
+    await Promise.all([
+      c.supabase.from("calls").update({ status: "missed", ended_at: new Date(now).toISOString() })
+        .eq("couple_id", c.couple.id).eq("status", "ringing").lt("started_at", new Date(now - 90_000).toISOString()),
+      c.supabase.from("calls").update({ status: "ended", ended_at: new Date(now).toISOString() })
+        .eq("couple_id", c.couple.id).eq("status", "accepted").lt("answered_at", new Date(now - 4 * 3600_000).toISOString()),
+    ]);
+    const { data: still } = await activeQuery();
+    if (still?.length) return fail("busy");
+  }
 
   const { data, error } = await c.supabase
     .from("calls")
