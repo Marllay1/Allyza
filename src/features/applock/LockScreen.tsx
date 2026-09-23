@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { beginBiometricUnlockAction, finishBiometricUnlockAction, unlockAppAction } from "@/actions/applock";
 import { AllyzaMark, AppIcon } from "@/components/icons";
 import { ErrorNote } from "@/components/Feedback";
-import { SignOutButton } from "@/components/SettingsForms";
 import { getPasskeyAssertion, markSessionAlive } from "@/lib/webauthn";
 import { useI18n } from "@/lib/i18n/provider";
 import type { ErrCode } from "@/lib/action-utils";
@@ -104,7 +103,6 @@ export function LockScreen({ method, locked }: Props) {
         <div className="w-full text-left text-[#ffb4c1]"><ErrorNote code={error} /></div>
         {note && <p role="status" className="text-sm opacity-85">{note}</p>}
 
-        <div className="opacity-70 pt-2"><SignOutButton /></div>
       </div>
     </div>
   );

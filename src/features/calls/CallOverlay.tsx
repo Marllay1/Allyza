@@ -186,6 +186,10 @@ export function CallOverlay(p: OverlayProps) {
           <StreamVideo stream={bigStream} muted={mainIsLocal} mirror={mainIsLocal && p.facingUser}
             className={`absolute inset-0 size-full object-cover transition-opacity duration-500 ${bigHasVideo ? "opacity-100" : "opacity-0"}`} />
         )}
+        {/* Audio calls have no picture, but the remote voice still needs an element to play through. */}
+        {!video && live && (
+          <StreamVideo stream={p.remoteStream} className="absolute size-px opacity-0 pointer-events-none" />
+        )}
         {video && live && bigHasVideo && <div aria-hidden className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/60 pointer-events-none" />}
 
         {/* top: who, and how it's going */}
