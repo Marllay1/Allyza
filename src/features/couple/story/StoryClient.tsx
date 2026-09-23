@@ -7,6 +7,7 @@ import { AppIcon } from "@/components/icons";
 import { ErrorNote } from "@/components/Feedback";
 import { ReactionBar } from "@/components/ReactionBar";
 import { Polaroid } from "@/features/couple/story/Polaroid";
+import { EntryActions } from "@/components/ui";
 import { STORY_EMOTIONS } from "@/lib/constants";
 import { toISODate } from "@/lib/cycle";
 import { formatDay } from "@/lib/format";
@@ -148,7 +149,7 @@ export function StoryClient({ coupleId, myId, moments, initialReactions, names }
                     )}
                     <ReactionBar targetType="story" targetId={m.id} reactions={reactions} myId={myId} toggle={toggle} />
                     {m.author_id === myId && (
-                      <button className="text-xs text-muted underline underline-offset-4 mt-2" onClick={() => confirm(t("common.confirmDelete")) && start(async () => { await deleteStoryAction(m.id); router.refresh(); })}>{t("common.delete")}</button>
+                      <EntryActions onDelete={() => start(async () => { await deleteStoryAction(m.id); router.refresh(); })} editLabel={t("common.edit")} deleteLabel={t("common.delete")} confirmLabel={t("common.confirmDelete")} />
                     )}
                   </li>
                 ))}

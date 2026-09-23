@@ -10,11 +10,11 @@ import { RefugeAtmosphere } from "@/features/refuge/RefugeAtmosphere";
 import { GoodNightCurtain } from "@/features/home/GoodNight";
 import { endNight, useNightMode } from "@/lib/local-pref";
 
-export type Unread = { journal: number; media: number; refuge: number; little: number; surprise: number };
+export type Unread = { journal: number; media: number; refuge: number; little: number; surprise: number; message: number };
 type Kind = keyof Unread;
 
 const UnreadCtx = createContext<{ unread: Unread; markRead: (kinds: Kind[]) => void }>({
-  unread: { journal: 0, media: 0, refuge: 0, little: 0, surprise: 0 },
+  unread: { journal: 0, media: 0, refuge: 0, little: 0, surprise: 0, message: 0 },
   markRead: () => {},
 });
 export const useUnread = () => useContext(UnreadCtx);
@@ -75,20 +75,33 @@ export function AppShell({ userId, role, softMode, initialUnread, children }: Pr
   const expand = () => { scroll.current.holdUntil = Date.now() + 1500; clearTimeout(scroll.current.timer); setCollapsed(false); };
 
   const value = useMemo(() => ({ unread, markRead }), [unread, markRead]);
-  const space = path.startsWith("/refuge") ? "refuge" : path.startsWith("/us") ? "us" : "her";
+  // Theming realm (drives the CSS room palette) vs. the header label (finer-grained) are separate:
+  // /settings and /messages keep her/his usual room tint rather than switching palette.
+  const themeSpace = path.startsWith("/refuge") ? "refuge" : path.startsWith("/us") ? "us" : "her";
+  const headerSpace = path.startsWith("/messages") ? "messaging" : path.startsWith("/settings") ? "settings" : path === "/home" ? "home" : themeSpace;
+  const usUnread = unread.journal + unread.media + unread.little + unread.surprise;
 
-  const items: { href: string; icon: IconName; label: string; match: string; badge: number }[] = [
-    { href: "/home", icon: "home", label: t("nav.home"), match: "/home", badge: 0 },
-    ...(role === "her" ? [{ href: "/her", icon: "her" as IconName, label: t("nav.her"), match: "/her", badge: 0 }] : []),
-    { href: "/refuge", icon: "refuge", label: t("nav.refuge"), match: "/refuge", badge: unread.refuge },
-    { href: "/us", icon: "us", label: t("nav.us"), match: "/us", badge: unread.journal + unread.media + unread.little + unread.surprise },
-    { href: "/settings", icon: "settings", label: t("nav.settings"), match: "/settings", badge: 0 },
-  ];
+  const items: { href: string; icon: IconName; label: string; match: string; badge: number }[] =
+    role === "her"
+      ? [
+          { href: "/home", icon: "home", label: t("nav.home"), match: "/home", badge: 0 },
+          { href: "/her", icon: "her", label: t("nav.her"), match: "/her", badge: 0 },
+          { href: "/refuge", icon: "refuge", label: t("nav.refuge"), match: "/refuge", badge: unread.refuge + usUnread },
+          { href: "/messages", icon: "message", label: t("nav.messaging"), match: "/messages", badge: unread.message },
+          { href: "/settings", icon: "settings", label: t("nav.settings"), match: "/settings", badge: 0 },
+        ]
+      : [
+          { href: "/home", icon: "home", label: t("nav.home"), match: "/home", badge: 0 },
+          { href: "/refuge", icon: "love", label: t("nav.her"), match: "/refuge", badge: 0 },
+          { href: "/us", icon: "us", label: t("nav.us"), match: "/us", badge: usUnread },
+          { href: "/messages", icon: "message", label: t("nav.messaging"), match: "/messages", badge: unread.message },
+          { href: "/settings", icon: "settings", label: t("nav.settings"), match: "/settings", badge: 0 },
+        ];
 
   return (
     <UnreadCtx.Provider value={value}>
-      <div data-space={space} data-soft={softMode ? "on" : "off"} data-night={night ? "on" : "off"} className="room relative min-h-dvh flex flex-col">
-        {space === "refuge" && <RefugeAtmosphere />}
+      <div data-space={themeSpace} data-soft={softMode ? "on" : "off"} data-night={night ? "on" : "off"} className="room relative min-h-dvh flex flex-col">
+        {themeSpace === "refuge" && <RefugeAtmosphere />}
         <header className="relative z-20 flex items-center justify-between px-4 pt-[max(0.7rem,env(safe-area-inset-top))] pb-1">
           <Link href="/home" className="flex items-center gap-2.5" aria-label="Allyza">
             <AllyzaMark height={34} />
@@ -100,7 +113,7 @@ export function AppShell({ userId, role, softMode, initialUnread, children }: Pr
                 <AppIcon name="sun" size={20} />
               </button>
             )}
-            <span className="eyebrow pl-1">{t(role === "partner" && space === "her" ? "space.us" : `space.${space}`)}</span>
+            <span className="eyebrow pl-1">{t(`space.${headerSpace}`)}</span>
           </div>
         </header>
 

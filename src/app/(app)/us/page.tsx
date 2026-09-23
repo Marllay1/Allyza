@@ -29,7 +29,7 @@ export default async function UsHub() {
       </Link>
 
       <div className="grid gap-3">
-        <TileLink href="/us/journal" icon="journal" tone="rose" title={t("couple.journal")} text={t("couple.journalText")} right={<UnreadDot kinds={["journal"]} />} />
+        <TileLink href="/us/journal" icon="journal" tone="rose" title={t("couple.journal")} text={t("couple.journalNotebookText")} right={<UnreadDot kinds={["journal"]} />} />
         <TileLink href="/us/surprises" icon="surprise" tone="gold" title={t("couple.surprises")} text={t("couple.surprisesText")} right={<UnreadDot kinds={["surprise"]} />} />
         <TileLink href="/us/story" icon="story" tone="mauve" title={t("couple.story")} text={t("couple.storyText")} />
         <TileLink href="/us/memories" icon="memories" tone="rose" title={t("couple.memories")} text={t("couple.memoriesText")} right={<UnreadDot kinds={["media"]} />} />

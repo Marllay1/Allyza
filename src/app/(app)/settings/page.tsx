@@ -1,13 +1,24 @@
 import { LangSwitch } from "@/components/LangSwitch";
+import { AvatarUpload } from "@/components/AvatarUpload";
+import { NicknameForm } from "@/components/NicknameForm";
 import { NameForm, ThemePicker } from "@/components/SettingsForms";
 import { PageHeader, Section, TileLink } from "@/components/ui";
 import { getT } from "@/lib/i18n/server";
 import { requireViewer } from "@/lib/session";
+import { createClient } from "@/lib/supabase/server";
 
 export default async function SettingsPage() {
   const v = await requireViewer();
   const { t } = await getT();
   const isHer = v.role === "her";
+  const supabase = await createClient();
+
+  const otherId = v.couple ? (isHer ? v.couple.partnerId : v.couple.herId) : null;
+  const [{ data: me }, { data: other }, { data: myNick }] = await Promise.all([
+    supabase.from("profiles").select("avatar_path").eq("id", v.id).maybeSingle(),
+    otherId ? supabase.from("profiles").select("display_name").eq("id", otherId).maybeSingle() : Promise.resolve({ data: null }),
+    otherId ? supabase.from("nicknames").select("nickname").eq("target_id", otherId).maybeSingle() : Promise.resolve({ data: null }),
+  ]);
 
   return (
     <>
@@ -20,8 +31,16 @@ export default async function SettingsPage() {
         <ThemePicker value={v.prefs.theme} />
       </Section>
       <Section title={t("settings.profile")}>
-        <NameForm name={v.displayName} />
+        <div className="grid gap-5">
+          {v.couple && <AvatarUpload coupleId={v.couple.id} path={me?.avatar_path ?? null} tone={isHer ? "rose" : "gold"} />}
+          <NameForm name={v.displayName} />
+        </div>
       </Section>
+      {v.couple?.partnerId && (
+        <Section title={t("nicknameSettings.title")}>
+          <NicknameForm initial={myNick?.nickname ?? ""} partnerDefaultName={other?.display_name || t("couple.partnerFallback")} />
+        </Section>
+      )}
       <div className="grid gap-3">
         {isHer && <TileLink href="/settings/sharing" icon="lock" tone="rose" title={t("settings.sharing")} text={t("settings.sharingText")} />}
         <TileLink href="/settings/privacy" icon="privacy" tone="mauve" title={t("settings.privacy")} text={t("settings.privacyText")} />

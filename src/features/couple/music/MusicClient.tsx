@@ -5,6 +5,7 @@ import { addSongAction, deleteSongAction } from "@/actions/world";
 import { AppIcon } from "@/components/icons";
 import { ErrorNote } from "@/components/Feedback";
 import { ReactionBar } from "@/components/ReactionBar";
+import { EntryActions } from "@/components/ui";
 import { IDEA_SONGS, OUR_SONGS, spotifySearch, youtubeSearch, type PlaylistSong } from "@/features/couple/music/playlist";
 import { formatDateTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/provider";
@@ -118,7 +119,7 @@ export function MusicClient({ coupleId, myId, songs, initialReactions, names }: 
               <p className="text-xs text-muted mt-2">{s.author_id === myId ? names.me : names.other} · {formatDateTime(s.created_at, locale)}</p>
               <ReactionBar targetType="song" targetId={s.id} reactions={reactions} myId={myId} toggle={toggle} />
               {s.author_id === myId && (
-                <button className="text-xs text-muted underline underline-offset-4 mt-2" onClick={() => confirm(t("common.confirmDelete")) && start(async () => { await deleteSongAction(s.id); router.refresh(); })}>{t("common.delete")}</button>
+                <EntryActions onDelete={() => start(async () => { await deleteSongAction(s.id); router.refresh(); })} editLabel={t("common.edit")} deleteLabel={t("common.delete")} confirmLabel={t("common.confirmDelete")} />
               )}
             </li>
           ))}

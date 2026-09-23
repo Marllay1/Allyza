@@ -92,7 +92,7 @@ export function SharingForm({ initial, herPartnerLinked }: { initial: Sharing; h
   );
 }
 
-export function PrefSwitches({ prefs, showRefuge }: { prefs: { notify_journal: boolean; notify_media: boolean; notify_refuge: boolean; notify_little: boolean; notify_surprise: boolean }; showRefuge: boolean }) {
+export function PrefSwitches({ prefs, showRefuge }: { prefs: { notify_journal: boolean; notify_media: boolean; notify_refuge: boolean; notify_little: boolean; notify_surprise: boolean; notify_message: boolean }; showRefuge: boolean }) {
   const t = useT();
   const router = useRouter();
   const [p, setP] = useState(prefs);
@@ -100,6 +100,7 @@ export function PrefSwitches({ prefs, showRefuge }: { prefs: { notify_journal: b
   const set = (k: keyof typeof p, v: boolean) => { setP({ ...p, [k]: v }); start(async () => { await updatePrefsAction({ [k]: v }); router.refresh(); }); };
   return (
     <div className="card px-5 divide-y divide-line">
+      <Switch checked={p.notify_message} onChange={(v) => set("notify_message", v)} label={t("notifications.message")} />
       <Switch checked={p.notify_journal} onChange={(v) => set("notify_journal", v)} label={t("notifications.journal")} />
       <Switch checked={p.notify_media} onChange={(v) => set("notify_media", v)} label={t("notifications.media")} />
       {showRefuge && <Switch checked={p.notify_refuge} onChange={(v) => set("notify_refuge", v)} label={t("notifications.refuge")} />}

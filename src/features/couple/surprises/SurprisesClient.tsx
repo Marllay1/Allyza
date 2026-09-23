@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { createSurpriseAction, deleteSurpriseAction, openSurpriseAction } from "@/actions/world";
 import { AppIcon } from "@/components/icons";
 import { ErrorNote } from "@/components/Feedback";
+import { Portal } from "@/components/Portal";
 import { useUnread } from "@/components/AppShell";
 import { GiftBox } from "@/features/couple/surprises/GiftBox";
 import { SURPRISE_KINDS, SURPRISE_UNLOCKS } from "@/lib/constants";
@@ -218,6 +219,7 @@ export function SurprisesClient({ coupleId, received, sent, otherName, canSend }
 
       {/* the opening moment */}
       {(opening || revealed) && (
+        <Portal>
         <div role="dialog" aria-modal="true" aria-label={t("surprises.open")} className="fixed inset-0 z-50 grid place-items-center p-5 bg-black/55 backdrop-blur-md" onClick={() => revealed && (setRevealed(null), router.refresh())}>
           {opening && !revealed && <div className="grid justify-items-center gap-4"><GiftBox open size={190} /><p className="font-display text-2xl text-white/90 rise">{t("surprises.opening")}</p></div>}
           {revealed && (
@@ -230,6 +232,7 @@ export function SurprisesClient({ coupleId, received, sent, otherName, canSend }
             </div>
           )}
         </div>
+        </Portal>
       )}
     </div>
   );

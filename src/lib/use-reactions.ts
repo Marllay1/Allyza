@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toggleReactionAction } from "@/actions/us";
 
-export type ReactionTarget = "journal" | "media" | "little" | "story" | "song" | "joke";
+export type ReactionTarget = "journal" | "media" | "little" | "story" | "song" | "joke" | "message";
 export type Reaction = { id: string; target_type: string; target_id: string; emoji: string; author_id: string };
 
 /** Live reactions for a couple, with optimistic toggling. */

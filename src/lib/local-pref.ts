@@ -41,6 +41,20 @@ export function useNightMode(): boolean {
   );
 }
 
+/** Best level reached per mini-game — device-local progress, never a score to chase, just where to resume. */
+export function useGameLevel(gameId: string): [number, (n: number) => void] {
+  const key = `allyza.game.${gameId}.level`;
+  const level = Number(useLocalPref(key, "0")) || 0;
+  const set = (n: number) => { if (n > level) setLocalPref(key, String(n)); };
+  return [level, set];
+}
+
+/** True only once mounted in the browser — for content (like a randomized game board) that must
+ * render nothing during SSR to avoid a hydration mismatch, without setting state inside an effect. */
+export function useIsClient(): boolean {
+  return useSyncExternalStore(() => () => {}, () => true, () => false);
+}
+
 /** Very light haptics on devices that support them; silent everywhere else and with reduced motion. */
 export function haptic(pattern: number | number[] = 12) {
   try {

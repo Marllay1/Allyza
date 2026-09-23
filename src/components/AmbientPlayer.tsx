@@ -137,6 +137,15 @@ function silentWavUrl() {
   return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
 }
 
+/** Best-effort hint (Safari) that this tab is doing audio playback, not a background timer. */
+function markAudioSessionPlayback() {
+  try {
+    (navigator as unknown as { audioSession?: { type: string } }).audioSession!.type = "playback";
+  } catch {
+    /* not supported */
+  }
+}
+
 export function AmbientPlayer() {
   const t = useT();
   const ctxRef = useRef<AudioContext | null>(null);
@@ -167,7 +176,7 @@ export function AmbientPlayer() {
     const ctx = ctxRef.current;
     // Must happen inside the tap: it is what lets iOS / Safari start audio at all.
     if (ctx.state !== "running") ctx.resume().catch(() => {});
-    try { (navigator as unknown as { audioSession?: { type: string } }).audioSession!.type = "playback"; } catch { /* not supported */ }
+    markAudioSessionPlayback();
     if (!keepAlive.current) {
       const a = new Audio(silentWavUrl());
       a.loop = true; a.setAttribute("playsinline", ""); keepAlive.current = a;

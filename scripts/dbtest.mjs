@@ -150,4 +150,61 @@ await asUser(him.id, async () => {
   check("5 failures lock out even the right PIN", r.ok === false && !!r.locked_until);
 });
 
+// Nicknames: each viewer's own label for the other person, invisible to that person
+await asUser(her.id, () => db.query(`insert into nicknames(target_id, nickname) values ('${him.id}', 'Mon amour')`));
+await asUser(him.id, async () => {
+  check("partner cannot read her nickname for him", (await q(`select * from nicknames where owner_id='${her.id}'`)).length === 0);
+  await db.query(`insert into nicknames(target_id, nickname) values ('${her.id}', 'Babe')`);
+  check("his own nickname for her is readable to him", (await q(`select nickname from nicknames where owner_id='${him.id}'`))[0].nickname === "Babe");
+});
+await asUser(her.id, async () => {
+  check("her nickname for him unaffected by his choice", (await q(`select nickname from nicknames where owner_id='${her.id}'`))[0].nickname === "Mon amour");
+  await expectFail("cannot set a nickname for a non-partner", () => db.query(`insert into nicknames(target_id, nickname) values ('${eve.id}', 'x')`));
+});
+
+// Messages: real chat, RLS-scoped, soft delete, guarded edits
+let msgId;
+await asUser(him.id, async () => {
+  const r = await q(`insert into messages(couple_id, kind, body) values ('${c.id}','text','Coucou toi') returning id`);
+  msgId = r[0].id;
+  await expectFail("cannot spoof author on a message", () => db.query(`insert into messages(couple_id, kind, body, author_id) values ('${c.id}','text','x','${her.id}')`));
+});
+await asUser(her.id, async () => {
+  check("she receives the message", (await q(`select body from messages where id='${msgId}'`))[0].body === "Coucou toi");
+  check("she got a contentless message notification", (await q(`select kind from notifications where kind='message'`)).length === 1);
+  await expectFail("she cannot edit his message", async () => { const r = await db.query(`update messages set body='hacked' where id='${msgId}' returning id`); if (!r.rows.length) throw new Error("0 rows"); });
+});
+check("outsider sees 0 messages", (await asUser(eve.id, () => q(`select * from messages`))).length === 0);
+await asUser(him.id, async () => {
+  await db.query(`update messages set body='Coucou toi (edit)' where id='${msgId}'`);
+  check("edited_at stamped on edit", (await q(`select edited_at is not null as e from messages where id='${msgId}'`))[0].e === true);
+  await db.query(`update messages set deleted_at = now() where id='${msgId}'`);
+  check("soft delete clears the body", (await q(`select body from messages where id='${msgId}'`))[0].body === null);
+});
+
+// Sticker messages: a fixed id in `body`, no storage_path required
+await asUser(him.id, async () => {
+  const r = await q(`insert into messages(couple_id, kind, body) values ('${c.id}','sticker','love') returning id`);
+  check("sticker message inserted with no storage_path", r.length === 1);
+  await expectFail("sticker requires a non-empty body", () => db.query(`insert into messages(couple_id, kind) values ('${c.id}','sticker')`));
+});
+
+// Read cursor: both members can see both cursors (so each can show the other's read state)
+await asUser(her.id, () => db.query(`insert into message_cursors(couple_id, last_read_at) values ('${c.id}', now()) on conflict (user_id) do update set last_read_at = excluded.last_read_at`));
+await asUser(him.id, async () => {
+  check("partner can read her cursor (for read receipts)", (await q(`select * from message_cursors where user_id='${her.id}'`)).length === 1);
+  await expectFail("partner cannot overwrite her cursor", async () => { const r = await db.query(`update message_cursors set last_read_at = now() where user_id='${her.id}' returning user_id`); if (!r.rows.length) throw new Error("0 rows"); });
+});
+await asUser(eve.id, async () => check("outsider sees no cursors", (await q(`select * from message_cursors`)).length === 0));
+
+// Avatars: her own column, grantable, nobody else's row touchable
+await asUser(her.id, async () => {
+  await db.query(`update profiles set avatar_path = '${c.id}/avatars/x.webp' where id='${her.id}'`);
+  check("avatar_path saved", (await q(`select avatar_path from profiles where id='${her.id}'`))[0].avatar_path?.endsWith("x.webp"));
+});
+await asUser(him.id, async () => {
+  const r = await db.query(`update profiles set avatar_path = 'hack' where id='${her.id}' returning id`);
+  check("partner cannot overwrite her avatar", r.rows.length === 0);
+});
+
 console.log(process.exitCode ? "\nSOME CHECKS FAILED" : "\nALL CHECKS PASSED");

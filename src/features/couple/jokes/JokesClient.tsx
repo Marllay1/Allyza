@@ -5,6 +5,7 @@ import { addJokeAction, deleteJokeAction } from "@/actions/world";
 import { AppIcon } from "@/components/icons";
 import { ErrorNote } from "@/components/Feedback";
 import { ReactionBar } from "@/components/ReactionBar";
+import { EntryActions } from "@/components/ui";
 import { JOKE_KINDS } from "@/lib/constants";
 import { useI18n } from "@/lib/i18n/provider";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
@@ -59,7 +60,7 @@ export function JokesClient({ coupleId, myId, jokes, initialReactions, names }: 
               {j.note && <p className="text-sm text-muted mt-2 whitespace-pre-wrap">{j.note}</p>}
               <ReactionBar targetType="joke" targetId={j.id} reactions={reactions} myId={myId} toggle={toggle} />
               {j.author_id === myId && (
-                <button className="text-xs text-muted underline underline-offset-4 mt-2" onClick={() => confirm(t("common.confirmDelete")) && start(async () => { await deleteJokeAction(j.id); router.refresh(); })}>{t("common.delete")}</button>
+                <EntryActions onDelete={() => start(async () => { await deleteJokeAction(j.id); router.refresh(); })} editLabel={t("common.edit")} deleteLabel={t("common.delete")} confirmLabel={t("common.confirmDelete")} />
               )}
             </li>
           ))}

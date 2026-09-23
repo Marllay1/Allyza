@@ -9,7 +9,7 @@ import { useDayNumber } from "@/lib/use-day-index";
  * A tiny moon that keeps her company. It is NOT a pet: nothing to feed, no streaks, no guilt.
  * It just says a gentle line, and mentions when something was left for her.
  */
-export function Companion() {
+export function Companion({ partnerName }: { partnerName: string }) {
   const t = useT();
   const { unread } = useUnread();
   const day = useDayNumber();
@@ -18,7 +18,7 @@ export function Companion() {
 
   const waiting = unread.refuge + unread.surprise > 0;
   const lines = t.arr("companion.lines");
-  const line = waiting && step === 0 ? t("companion.waiting") : lines[(day + step) % Math.max(1, lines.length)] ?? "";
+  const line = waiting && step === 0 ? t("companion.waiting", { name: partnerName }) : lines[(day + step) % Math.max(1, lines.length)] ?? "";
 
   return (
     <button

@@ -8,6 +8,7 @@ import { formatDateTime } from "@/lib/format";
 import { prepareImage, isAcceptedImage } from "@/lib/image";
 import { useSignedUrls } from "@/lib/use-signed-urls";
 import { ErrorNote, Notice } from "@/components/Feedback";
+import { EntryActions } from "@/components/ui";
 import { AppIcon } from "@/components/icons";
 import type { ErrCode } from "@/lib/action-utils";
 
@@ -152,7 +153,7 @@ export function VaultClient({ state, items, coupleId, myId, names }: { state: Va
               ?   <img src={urls[i.storage_path]} alt={i.title} className="rounded-2xl mt-2 w-full max-h-96 object-cover" />
               : <div className="rounded-2xl mt-2 h-40 bg-surface2 animate-pulse" />)}
             {i.author_id === myId && (
-              <button className="text-xs text-muted underline underline-offset-4 mt-2" onClick={() => confirm(t("common.confirmDelete")) && run(() => deleteVaultItemAction(i.id))}>{t("common.delete")}</button>
+              <EntryActions onDelete={() => run(() => deleteVaultItemAction(i.id))} editLabel={t("common.edit")} deleteLabel={t("common.delete")} confirmLabel={t("common.confirmDelete")} />
             )}
           </li>
         ))}

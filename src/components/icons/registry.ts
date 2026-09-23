@@ -13,6 +13,10 @@ import {
   Pause, Pencil, Piano, Play, Plus, Quote, Send, Settings, Shield, ShieldCheck, Sparkles, Star, Stars,
   Sun, Sunrise, Target, Trash2, Trees, TriangleAlert, Utensils, Waves, Wheat, Wind, X, ExternalLink,
   Circle, Puzzle, Copy, ArrowRight, Volume2, Square,
+  HandHeart, Mic, MicOff, Paperclip, Image as ImageIcon, CornerUpLeft, CheckCheck, UserRound,
+  Pickaxe, Gem, Bomb, Rat, Ghost, Zap, Lightbulb, RotateCw, Timer, Shuffle, Grid3x3, Sparkle,
+  PenLine, Reply, Trophy, Crosshair, Compass, AlertCircle, Pin,
+  Phone, PhoneOff, Video, VideoOff, SwitchCamera, VolumeX,
 } from "lucide-react";
 
 export const ICONS = {
@@ -60,6 +64,16 @@ export const ICONS = {
   joy: Sun, laugh: Laugh, tender: Feather, nostalgia: Hourglass, wonder: Sparkles,
   joke: Laugh, nickname: Heart, phrase: MessageCircle, quote: Quote, moment: Sparkles,
   layers: Layers,
+  // notebook moods (joy/love/calm/tender/nostalgia already defined above)
+  tired: BedDouble, grateful: HandHeart,
+  // messaging
+  mic: Mic, micOff: MicOff, attach: Paperclip, image: ImageIcon, reply: Reply, replyArrow: CornerUpLeft,
+  readAll: CheckCheck, avatar: UserRound, pin: Pin, alert: AlertCircle,
+  call: Phone, callEnd: PhoneOff, video: Video, videoOff: VideoOff, switchCamera: SwitchCamera, speaker: VolumeX,
+  // games (new/expanded)
+  light: Lightbulb, treasureDig: Pickaxe, gem: Gem, bomb: Bomb, rat: Rat, ghost: Ghost,
+  zap: Zap, rotate: RotateCw, timer: Timer, shuffle: Shuffle, grid: Grid3x3, sparkle: Sparkle,
+  penLine: PenLine, trophy: Trophy, crosshair: Crosshair, compass: Compass,
 } as const;
 
 export type IconName = keyof typeof ICONS;

@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element */
 /**
  * The official Allyza logo (from assets/logo-source.jpg), pre-rendered at a few exact heights by
  * scripts/make-brand.mjs so the browser never has to shrink a huge image (that is what makes small logos look soft

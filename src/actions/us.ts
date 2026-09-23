@@ -19,29 +19,33 @@ async function ctx() {
 /* ───────── journal ───────── */
 
 const body = z.string().trim().min(1).max(4000);
+const JOURNAL_MOODS = ["joy", "love", "calm", "tender", "nostalgia", "tired", "grateful"] as const;
 
-export async function postJournalAction(input: { body: string }) {
-  const p = z.object({ body }).safeParse(input);
+export async function postJournalAction(input: { body: string; title?: string; mood?: string }) {
+  const p = z.object({ body, title: z.string().trim().max(120).optional(), mood: z.enum(JOURNAL_MOODS).optional() }).safeParse(input);
   if (!p.success) return fail("invalid");
   const c = await ctx();
   if (!c) return fail("auth");
   if (!rateLimit(`journal:${c.uid}`, 40, 60_000)) return fail("rate");
   const { data, error } = await c.supabase
     .from("journal_entries")
-    .insert({ couple_id: c.couple.id, body: p.data.body })
-    .select("id, couple_id, author_id, body, created_at, edited_at")
+    .insert({ couple_id: c.couple.id, body: p.data.body, title: p.data.title || null, mood: p.data.mood ?? null })
+    .select("id, couple_id, author_id, title, body, mood, created_at, edited_at")
     .single();
   if (error || !data) return fail("generic");
   void pingPartner("journal");
   return ok(data);
 }
 
-export async function editJournalAction(input: { id: string; body: string }) {
-  const p = z.object({ id: uuid, body }).safeParse(input);
+export async function editJournalAction(input: { id: string; body: string; title?: string; mood?: string | null }) {
+  const p = z.object({ id: uuid, body, title: z.string().trim().max(120).optional(), mood: z.enum(JOURNAL_MOODS).nullable().optional() }).safeParse(input);
   if (!p.success) return fail("invalid");
   const c = await ctx();
   if (!c) return fail("auth");
-  const { data, error } = await c.supabase.from("journal_entries").update({ body: p.data.body }).eq("id", p.data.id).eq("author_id", c.uid).select("id");
+  const patch: Record<string, unknown> = { body: p.data.body };
+  if (p.data.title !== undefined) patch.title = p.data.title || null;
+  if (p.data.mood !== undefined) patch.mood = p.data.mood;
+  const { data, error } = await c.supabase.from("journal_entries").update(patch).eq("id", p.data.id).eq("author_id", c.uid).select("id");
   return error || !data?.length ? fail("forbidden") : ok();
 }
 
@@ -122,8 +126,8 @@ export async function deleteMediaAction(id: string) {
 
 /* ───────── reactions ───────── */
 
-export async function toggleReactionAction(input: { targetType: "journal" | "media" | "little" | "story" | "song" | "joke"; targetId: string; emoji: string }) {
-  const p = z.object({ targetType: z.enum(["journal", "media", "little", "story", "song", "joke"]), targetId: uuid, emoji: z.enum(REACTION_EMOJIS) }).safeParse(input);
+export async function toggleReactionAction(input: { targetType: "journal" | "media" | "little" | "story" | "song" | "joke" | "message"; targetId: string; emoji: string }) {
+  const p = z.object({ targetType: z.enum(["journal", "media", "little", "story", "song", "joke", "message"]), targetId: uuid, emoji: z.enum(REACTION_EMOJIS) }).safeParse(input);
   if (!p.success) return fail("invalid");
   const c = await ctx();
   if (!c) return fail("auth");

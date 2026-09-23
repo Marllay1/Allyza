@@ -7,12 +7,14 @@ import { useI18n } from "@/lib/i18n/provider";
 import { formatDateTime } from "@/lib/format";
 import { ErrorNote } from "@/components/Feedback";
 import { AppIcon } from "@/components/icons";
+import { EntryActions } from "@/components/ui";
 import { useUnread } from "@/components/AppShell";
 import type { ErrCode } from "@/lib/action-utils";
 
 export type Msg = { id: string; author_id: string; body: string; opened_at: string | null; created_at: string };
 
-export function MessagesClient({ coupleId, myId, msgs, names, canSend }: { coupleId: string; myId: string; msgs: Msg[]; names: { other: string }; canSend: boolean }) {
+/** "Leave her a little note": a small sealed note in the Refuge — distinct from the live Messaging chat. */
+export function LittleNoteClient({ coupleId, myId, msgs, names, canSend }: { coupleId: string; myId: string; msgs: Msg[]; names: { other: string }; canSend: boolean }) {
   const { t, locale } = useI18n();
   const router = useRouter();
   const { markRead } = useUnread();
@@ -43,7 +45,12 @@ export function MessagesClient({ coupleId, myId, msgs, names, canSend }: { coupl
           </button>
         </section>
       )}
-      {msgs.length === 0 && <p className="text-center text-muted py-8 text-balance">{t("refuge.messagesEmpty")}</p>}
+      {msgs.length === 0 && (
+        <div className="text-center text-muted py-8 grid justify-items-center gap-2">
+          <AppIcon name="mail" size={28} className="opacity-60" />
+          <p className="text-balance max-w-xs">{t("refuge.messagesEmpty")}</p>
+        </div>
+      )}
       <ul className="grid gap-3">
         {msgs.map((m) => {
           const mine = m.author_id === myId;
@@ -59,7 +66,7 @@ export function MessagesClient({ coupleId, myId, msgs, names, canSend }: { coupl
                 <p className="font-display text-2xl leading-snug whitespace-pre-wrap break-words rise">{m.body}</p>
               )}
               {mine && (
-                <button className="text-xs text-muted underline underline-offset-4 mt-2" onClick={() => confirm(t("common.confirmDelete")) && start(async () => { await deleteRefugeMessageAction(m.id); router.refresh(); })}>{t("common.delete")}</button>
+                <EntryActions onDelete={() => start(async () => { await deleteRefugeMessageAction(m.id); router.refresh(); })} deleteLabel={t("common.delete")} confirmLabel={t("common.confirmDelete")} />
               )}
             </li>
           );

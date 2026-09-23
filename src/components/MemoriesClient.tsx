@@ -13,6 +13,7 @@ import { useReactions, type Reaction } from "@/lib/use-reactions";
 import { ReactionBar } from "@/components/ReactionBar";
 import { ErrorNote } from "@/components/Feedback";
 import { AppIcon } from "@/components/icons";
+import { Portal } from "@/components/Portal";
 import { useUnread } from "@/components/AppShell";
 import type { ErrCode } from "@/lib/action-utils";
 
@@ -144,6 +145,7 @@ export function MemoriesClient({ coupleId, myId, initial, initialReactions, name
       )}
 
       {current && (
+        <Portal>
         <div role="dialog" aria-modal="true" aria-label={t("memories.viewer")} className="fixed inset-0 z-50 bg-black/90 flex flex-col text-white">
           <div className="flex items-center justify-between p-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
             <span className="text-sm opacity-80 inline-flex items-center gap-2"><AppIcon name="lock" size={13} /> <span className="sr-only">{t("couple.privateOnAllyza")}</span>{catLabel(current.category)} · {formatDay(current.taken_on, locale, { day: "numeric", month: "long", year: "numeric" })} · {current.author_id === myId ? names.me : names.other}</span>
@@ -175,6 +177,7 @@ export function MemoriesClient({ coupleId, myId, initial, initialReactions, name
             )}
           </div>
         </div>
+        </Portal>
       )}
     </>
   );

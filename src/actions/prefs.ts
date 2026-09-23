@@ -37,6 +37,7 @@ const prefSchema = z.object({
   notify_refuge: z.boolean().optional(),
   notify_little: z.boolean().optional(),
   notify_surprise: z.boolean().optional(),
+  notify_message: z.boolean().optional(),
 });
 
 export async function updatePrefsAction(input: z.infer<typeof prefSchema>) {

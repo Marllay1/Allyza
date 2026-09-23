@@ -10,6 +10,7 @@ import { useReactions, type Reaction } from "@/lib/use-reactions";
 import { ReactionBar } from "@/components/ReactionBar";
 import { ErrorNote } from "@/components/Feedback";
 import { AppIcon } from "@/components/icons";
+import { EntryActions } from "@/components/ui";
 import { useUnread } from "@/components/AppShell";
 import type { ErrCode } from "@/lib/action-utils";
 
@@ -102,7 +103,7 @@ export function LittleClient({ coupleId, myId, items, initialReactions, names }:
               )}
               {!sealed && <ReactionBar targetType="little" targetId={i.id} reactions={reactions} myId={myId} toggle={toggle} />}
               {mine && (
-                <button className="text-xs text-muted underline underline-offset-4 mt-2" onClick={() => confirm(t("common.confirmDelete")) && run(() => deleteLittleAction(i.id))}>{t("common.delete")}</button>
+                <EntryActions onDelete={() => run(() => deleteLittleAction(i.id))} editLabel={t("common.edit")} deleteLabel={t("common.delete")} confirmLabel={t("common.confirmDelete")} />
               )}
             </li>
           );

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AppIcon, type IconName } from "@/components/icons";
 
-export function PageHeader({ title, subtitle, back, backLabel }: { title: string; subtitle?: string; back?: string; backLabel?: string }) {
+export function PageHeader({ title, subtitle, back, backLabel, actions }: { title: string; subtitle?: string; back?: string; backLabel?: string; actions?: React.ReactNode }) {
   return (
     <div className="mb-6 rise">
       {back && (
@@ -9,7 +9,10 @@ export function PageHeader({ title, subtitle, back, backLabel }: { title: string
           <AppIcon name="back" size={22} />
         </Link>
       )}
-      <h1 className="text-[2.6rem] leading-[1.05]">{title}</h1>
+      <div className="flex items-start justify-between gap-3">
+        <h1 className="text-[2.6rem] leading-[1.05]">{title}</h1>
+        {actions && <div className="flex items-center gap-2 shrink-0 mt-1">{actions}</div>}
+      </div>
       {subtitle && <p className="text-muted mt-2 text-balance">{subtitle}</p>}
     </div>
   );
@@ -61,6 +64,27 @@ export function TileLink({ href, icon, title, text, badge, tone, right }: { href
       {right}
       <AppIcon name="forward" size={18} className="text-muted" />
     </Link>
+  );
+}
+
+/** Small pill button for inline actions (edit/delete/etc). Never a bare underlined text link. */
+export function PillButton({ icon, children, tone = "muted", onClick, disabled, ariaLabel }: { icon: IconName; children?: React.ReactNode; tone?: "muted" | "danger" | "accent"; onClick: () => void; disabled?: boolean; ariaLabel?: string }) {
+  const toneClass = tone === "danger" ? "text-danger hover:!bg-[color-mix(in_srgb,var(--danger)_14%,transparent)]" : tone === "accent" ? "text-accent" : "text-muted";
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} aria-label={ariaLabel}
+      className={`chip !min-h-11 !px-3.5 !text-xs ${toneClass}`}>
+      <AppIcon name={icon} size={14} /> {children}
+    </button>
+  );
+}
+
+/** Edit + Delete row used under user-authored content cards. Delete asks for confirmation first. */
+export function EntryActions({ onEdit, onDelete, editLabel, deleteLabel, confirmLabel }: { onEdit?: () => void; onDelete: () => void; editLabel?: string; deleteLabel: string; confirmLabel: string }) {
+  return (
+    <div className="flex gap-2 mt-3">
+      {onEdit && <PillButton icon="edit" onClick={onEdit}>{editLabel}</PillButton>}
+      <PillButton icon="trash" tone="danger" onClick={() => confirm(confirmLabel) && onDelete()} ariaLabel={deleteLabel}>{deleteLabel}</PillButton>
+    </div>
   );
 }
 
