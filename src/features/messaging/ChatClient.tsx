@@ -255,7 +255,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
       const ext = recorder.blob.mime.includes("mp4") ? "m4a" : recorder.blob.mime.includes("aac") ? "aac" : "webm";
       const path = `${coupleId}/chat/${crypto.randomUUID()}.${ext}`;
       const supabase = createClient();
-      const up = await supabase.storage.from("couple-media").upload(path, recorder.blob.blob, { contentType: recorder.blob.mime });
+      const up = await supabase.storage.from("couple-media").upload(path, recorder.blob.blob, { contentType: recorder.blob.mime.split(";")[0] });
       if (up.error) throw up.error;
       const r = await sendMediaMessageAction({ kind: "audio", path, durationMs: recorder.blob.ms });
       if (r.ok) upsert(r.data as ChatMessage); else throw new Error(r.error);
