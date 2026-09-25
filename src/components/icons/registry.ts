@@ -16,7 +16,7 @@ import {
   HandHeart, Mic, MicOff, Paperclip, Image as ImageIcon, CornerUpLeft, CheckCheck, UserRound,
   Pickaxe, Gem, Bomb, Rat, Ghost, Zap, Lightbulb, RotateCw, Timer, Shuffle, Grid3x3, Sparkle,
   PenLine, Reply, Trophy, Crosshair, Compass, AlertCircle, Pin,
-  Phone, PhoneOff, Video, VideoOff, SwitchCamera, VolumeX,
+  Phone, PhoneOff, Video, VideoOff, SwitchCamera, VolumeX, Search,
 } from "lucide-react";
 
 export const ICONS = {
@@ -26,7 +26,7 @@ export const ICONS = {
   // actions
   close: X, check: Check, plus: Plus, trash: Trash2, edit: Pencil, send: Send, camera: Camera,
   addImage: ImagePlus, copy: Copy, eye: Eye, eyeOff: EyeOff, download: Download, external: ExternalLink,
-  emoji: Smile, play: Play, pause: Pause, stop: Square, volume: Volume2,
+  search: Search, emoji: Smile, play: Play, pause: Pause, stop: Square, volume: Volume2,
   // security & settings
   lock: Lock, unlock: LockOpen, key: KeyRound, shield: ShieldCheck, privacy: Shield, bell: Bell,
   language: Languages, logout: LogOut, palette: Palette, info: Info, warn: TriangleAlert,

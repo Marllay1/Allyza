@@ -4,6 +4,7 @@ import { AppIcon, type IconName } from "@/components/icons";
 import { useCall } from "@/features/calls/CallProvider";
 import { CallHistorySheet } from "@/features/messaging/CallHistory";
 import { ChatInfoSheet } from "@/features/messaging/ChatInfo";
+import { openSearch } from "@/features/messaging/search-store";
 import { useI18n } from "@/lib/i18n/provider";
 
 type Item = { icon: IconName; label: string; onSelect: () => void; disabled?: boolean };
@@ -62,11 +63,12 @@ export function ChatHeaderMenus({ myId, name, avatar, tone }: { myId: string; na
         ]}
       />
       <DropMenu
-        label={t("messaging.mediaMenu")}
+        label={t("messaging.moreMenu")}
         className="icon-btn shrink-0"
         trigger={<AppIcon name="info" size={18} />}
         chevron={false}
         items={[
+          { icon: "search", label: t("messaging.search"), onSelect: openSearch },
           { icon: "addImage", label: t("messaging.sharedMediaTitle"), onSelect: () => setSheet("media") },
           { icon: "clock", label: t("call.history"), onSelect: () => setSheet("calls") },
         ]}

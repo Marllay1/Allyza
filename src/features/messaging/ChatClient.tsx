@@ -22,6 +22,8 @@ import { useCall } from "@/features/calls/CallProvider";
 import { PhotoViewer } from "@/features/messaging/PhotoViewer";
 import { publishPhotos } from "@/features/messaging/media-store";
 import { EmojiPicker, isEmojiOnly } from "@/features/messaging/EmojiPicker";
+import { Linkified } from "@/features/messaging/Linkified";
+import { closeSearch, useSearchOpen } from "@/features/messaging/search-store";
 import { useE2ee } from "@/features/e2ee/E2eeProvider";
 import { useVoiceRecorder } from "@/lib/use-voice-recorder";
 import { useUnread } from "@/components/AppShell";
@@ -126,6 +128,9 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
   /** The message a reaction is being chosen for, from any emoji (the "+" next to the quick reactions). */
   const [reactFor, setReactFor] = useState<string | null>(null);
   const [reactTab, setReactTab] = useState<"stickers" | "emojis">("stickers");
+  const searchOpen = useSearchOpen();
+  const [query, setQuery] = useState("");
+  const [hitIdx, setHitIdx] = useState(0);
   const [viewer, setViewer] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -204,6 +209,17 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
       })();
     }
   }, [messages, plain, urls, blobUrls, e2ee]);
+
+  // In-conversation search runs on what is on this device (decrypted text), so it works with end-to-end encryption too.
+  const norm = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+  const needle = norm(query.trim());
+  const hits = useMemo(
+    () => (needle ? messages.filter((m) => m.kind === "text" && !m.deleted_at && norm(m.enc === 1 ? plain[`${m.id}:${m.edited_at ?? ""}`] ?? "" : m.body ?? "").includes(needle)).map((m) => m.id) : []),
+    [messages, plain, needle],
+  );
+  const hitPos = hits.length ? Math.min(hitIdx, hits.length - 1) : -1;
+  const currentHit = hitPos >= 0 ? hits[hitPos] : null;
+  useEffect(() => { if (currentHit) document.getElementById(`msg-${currentHit}`)?.scrollIntoView({ behavior: "smooth", block: "center" }); }, [currentHit]);
 
   const photoItems = useMemo(() => messages.filter((m) => m.kind === "image" && !m.deleted_at && m.storage_path && (m.enc === 1 ? blobUrls[m.storage_path] : urls[m.storage_path])), [messages, urls, blobUrls]);
   const photoUrls = useMemo(() => photoItems.map((m) => (m.enc === 1 ? blobUrls[m.storage_path!] : urls[m.storage_path!])), [photoItems, urls, blobUrls]);
@@ -484,6 +500,18 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
           <div aria-hidden className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to bottom, color-mix(in srgb, var(--bg) 66%, transparent), color-mix(in srgb, var(--bg) 46%, transparent) 40%, color-mix(in srgb, var(--bg) 72%, transparent))" }} />
         </>
       )}
+      {searchOpen && (
+        <div className="absolute top-2 inset-x-3 z-30 flex items-center gap-1.5 rounded-full glass border border-line pl-4 pr-1.5 py-1 shadow-lg pop-in" role="search">
+          <AppIcon name="search" size={16} className="text-muted shrink-0" />
+          <input autoFocus type="search" className="flex-1 min-w-0 bg-transparent outline-none py-1.5" placeholder={t("messaging.searchPlaceholder")} aria-label={t("messaging.search")}
+            value={query} onChange={(e) => { setQuery(e.target.value); setHitIdx(Number.MAX_SAFE_INTEGER); }}
+            onKeyDown={(e) => { if (e.key === "Enter") setHitIdx(hitPos > 0 ? hitPos - 1 : hits.length - 1); if (e.key === "Escape") { closeSearch(); setQuery(""); } }} />
+          <span className="text-xs text-muted tabular-nums shrink-0" role="status">{needle ? (hits.length ? `${hitPos + 1}/${hits.length}` : t("messaging.noResults")) : ""}</span>
+          <button type="button" className="icon-btn !size-9 shrink-0" aria-label={t("common.previous")} disabled={!hits.length} onClick={() => setHitIdx(hitPos > 0 ? hitPos - 1 : hits.length - 1)}><AppIcon name="down" size={16} className="rotate-180" /></button>
+          <button type="button" className="icon-btn !size-9 shrink-0" aria-label={t("common.next")} disabled={!hits.length} onClick={() => setHitIdx(hitPos < hits.length - 1 ? hitPos + 1 : 0)}><AppIcon name="down" size={16} /></button>
+          <button type="button" className="icon-btn !size-9 shrink-0" aria-label={t("common.close")} onClick={() => { closeSearch(); setQuery(""); }}><AppIcon name="close" size={16} /></button>
+        </div>
+      )}
       <div ref={scrollerRef} className="relative flex-1 min-h-0 overflow-y-auto grid grid-cols-[minmax(0,1fr)] gap-1 content-start px-3 pb-3">
         {messages.length === 0 && (
           <div className="m-auto text-center py-10 grid justify-items-center gap-2">
@@ -516,7 +544,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
                       <div className="w-full text-center my-2"><span className="chip !cursor-default !text-[0.68rem] !min-h-7 !px-3">{t("messaging.newMessages")}</span></div>
                     )}
                     <PressTarget disabled={!!editing || !!m.tmp || !!m.deleted_at || photoCard} onLongPress={(el) => openMenuFor(m, el)} style={{ userSelect: "none" }}
-                      className={`max-w-full ${(m.kind === "sticker" && !m.deleted_at) || photoCard || (m.kind === "text" && !m.deleted_at && editing?.id !== m.id && isEmojiOnly(bodyOf(m))) ? "px-1" : `rounded-3xl px-4 py-2.5 border ${mine ? "bg-accent/18 border-accent/30 rounded-br-md" : "bg-surface2 border-line rounded-bl-md"} ${m.deleted_at ? "italic opacity-70" : ""}`} ${menu?.id === m.id ? "ring-2 ring-accent/60" : ""}`}>
+                      className={`max-w-full ${(m.kind === "sticker" && !m.deleted_at) || photoCard || (m.kind === "text" && !m.deleted_at && editing?.id !== m.id && isEmojiOnly(bodyOf(m))) ? "px-1" : `rounded-3xl px-4 py-2.5 border ${mine ? "bg-accent/18 border-accent/30 rounded-br-md" : "bg-surface2 border-line rounded-bl-md"} ${m.deleted_at ? "italic opacity-70" : ""}`} ${menu?.id === m.id ? "ring-2 ring-accent/60" : ""} ${currentHit === m.id ? "ring-2 ring-accent" : ""}`}>
                       {quoted && !m.deleted_at && (
                         <button type="button" onClick={() => document.getElementById(`msg-${quoted.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
                           className="block w-full text-left rounded-xl px-2.5 py-1.5 mb-1.5 border-l-2 border-accent bg-black/5 text-xs">
@@ -548,7 +576,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
                         m.enc === 1 && bodyOf(m) === null ? (
                           <p className="inline-flex items-center gap-1.5 text-sm italic opacity-70"><AppIcon name="lock" size={13} /> {t(undecryptable(m) ? "e2ee.cannotDecrypt" : "e2ee.notDecrypted")}</p>
                         ) : (
-                          <p className={isEmojiOnly(bodyOf(m)) ? "text-[2.6rem] leading-[1.15]" : "whitespace-pre-wrap break-words"}>{bodyOf(m)}</p>
+                          <p className={isEmojiOnly(bodyOf(m)) ? "text-[2.6rem] leading-[1.15]" : "whitespace-pre-wrap break-words"}>{isEmojiOnly(bodyOf(m)) ? bodyOf(m) : <Linkified text={bodyOf(m) ?? ""} />}</p>
                         )
                       ) : m.kind === "sticker" ? (
                         isStickerId(bodyOf(m) ?? "") ? <Sticker id={bodyOf(m) as StickerId} size={84} /> : null
