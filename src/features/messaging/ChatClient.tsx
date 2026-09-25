@@ -21,6 +21,7 @@ import { haptic, setLocalPref, useLocalPref } from "@/lib/local-pref";
 import { useCall } from "@/features/calls/CallProvider";
 import { PhotoViewer } from "@/features/messaging/PhotoViewer";
 import { publishPhotos } from "@/features/messaging/media-store";
+import { EmojiPicker, isEmojiOnly } from "@/features/messaging/EmojiPicker";
 import { useE2ee } from "@/features/e2ee/E2eeProvider";
 import { useVoiceRecorder } from "@/lib/use-voice-recorder";
 import { useUnread } from "@/components/AppShell";
@@ -80,12 +81,12 @@ function AudioPlayer({ url, durationMs, mine }: { url: string | undefined; durat
 
   return (
     <div className="flex items-center gap-2.5 min-w-[11rem]">
-      <button type="button" onClick={toggle} className={`icon-btn shrink-0 ${mine ? "bg-white/15" : "bg-accent/15"}`} aria-label={playing ? "pause" : "play"}>
+      <button type="button" onClick={toggle} className={`icon-btn shrink-0 ${mine ? "bg-black/10" : "bg-accent/15"}`} aria-label={playing ? "pause" : "play"}>
         <AppIcon name={playing ? "pause" : "play"} size={16} />
       </button>
       <div className="flex-1 h-7 flex items-center gap-[2px]">
         {(peaks ?? Array.from({ length: 32 }, () => 0.15)).map((p, i) => (
-          <span key={i} className="flex-1 rounded-full" style={{ height: `${Math.round(p * 100)}%`, minHeight: 3, background: i / 32 <= progress ? (mine ? "#fff" : "var(--accent)") : mine ? "rgb(255 255 255 / .35)" : "var(--line)" }} />
+          <span key={i} className="flex-1 rounded-full" style={{ height: `${Math.round(p * 100)}%`, minHeight: 3, background: i / 32 <= progress ? (mine ? "var(--accent-ink)" : "var(--accent)") : mine ? "color-mix(in srgb, var(--accent-ink) 30%, transparent)" : "var(--line)" }} />
         ))}
       </div>
       <span className="text-[0.68rem] tabular-nums opacity-80 shrink-0">{fmtDur(durationMs ?? 0)}</span>
@@ -121,6 +122,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
   const [theirCursor, setTheirCursor] = useState<string | null>(initialCursors.theirs);
   const [showJump, setShowJump] = useState(false);
   const [stickersOpen, setStickersOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [viewer, setViewer] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -247,7 +249,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
     const catchUp = async () => {
       if (document.visibilityState !== "visible") return;
       const known = messagesRef.current.filter((m) => !m.tmp).map((m) => m.created_at).sort().at(-1);
-      let q = supabase.from("messages").select("id, author_id, kind, body, enc, storage_path, duration_ms, reply_to, edited_at, deleted_at, created_at").order("created_at", { ascending: true }).limit(100);
+      let q = supabase.from("messages").select("*").order("created_at", { ascending: true }).limit(100);
       if (known) q = q.gt("created_at", known);
       const { data: fresh } = await q;
       if (!fresh?.length) return;
@@ -401,6 +403,16 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
     return true;
   };
 
+  /** Drops an emoji into the message being written, at the caret. */
+  const insertEmoji = (emoji: string) => {
+    const ta = inputRef.current;
+    const at = ta?.selectionStart ?? text.length;
+    const end = ta?.selectionEnd ?? at;
+    if (text.length + emoji.length > 4000) return;
+    setText(text.slice(0, at) + emoji + text.slice(end));
+    requestAnimationFrame(() => { ta?.focus(); ta?.setSelectionRange(at + emoji.length, at + emoji.length); });
+  };
+
   const openMenuFor = (m: ChatMessage, el: HTMLElement) => {
     if (m.tmp || m.deleted_at) return;
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -469,7 +481,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
           <div aria-hidden className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to bottom, color-mix(in srgb, var(--bg) 66%, transparent), color-mix(in srgb, var(--bg) 46%, transparent) 40%, color-mix(in srgb, var(--bg) 72%, transparent))" }} />
         </>
       )}
-      <div ref={scrollerRef} className="relative flex-1 min-h-0 overflow-y-auto grid gap-1 content-start px-3 pb-3">
+      <div ref={scrollerRef} className="relative flex-1 min-h-0 overflow-y-auto grid grid-cols-[minmax(0,1fr)] gap-1 content-start px-3 pb-3">
         {messages.length === 0 && (
           <div className="m-auto text-center py-10 grid justify-items-center gap-2">
             <AppIcon name="message" size={30} className="text-muted opacity-60" />
@@ -477,7 +489,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
           </div>
         )}
         {days.map(({ day, items }) => (
-          <div key={day} className="grid gap-1.5 py-2">
+          <div key={day} className="grid grid-cols-[minmax(0,1fr)] gap-1.5 py-2">
             <div className="eyebrow text-center sticky top-0 z-10 py-1">
               <span className="inline-block rounded-full px-3 py-0.5 backdrop-blur" style={{ background: "color-mix(in srgb, var(--surface) 72%, transparent)" }}>{dayLabel(day)}</span>
             </div>
@@ -501,10 +513,10 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
                       <div className="w-full text-center my-2"><span className="chip !cursor-default !text-[0.68rem] !min-h-7 !px-3">{t("messaging.newMessages")}</span></div>
                     )}
                     <PressTarget disabled={!!editing || !!m.tmp || !!m.deleted_at || photoCard} onLongPress={(el) => openMenuFor(m, el)} style={{ userSelect: "none" }}
-                      className={`${(m.kind === "sticker" && !m.deleted_at) || photoCard ? "px-1" : `rounded-3xl px-4 py-2.5 border ${mine ? "bg-accent/18 border-accent/30 rounded-br-md" : "bg-surface2 border-line rounded-bl-md"} ${m.deleted_at ? "italic opacity-70" : ""}`} ${menu?.id === m.id ? "ring-2 ring-accent/60" : ""}`}>
+                      className={`max-w-full ${(m.kind === "sticker" && !m.deleted_at) || photoCard || (m.kind === "text" && !m.deleted_at && editing?.id !== m.id && isEmojiOnly(bodyOf(m))) ? "px-1" : `rounded-3xl px-4 py-2.5 border ${mine ? "bg-accent text-accent-ink border-transparent rounded-br-md shadow-sm" : "bg-surface2 border-line rounded-bl-md"} ${m.deleted_at ? "italic opacity-70" : ""}`} ${menu?.id === m.id ? "ring-2 ring-accent/60" : ""}`}>
                       {quoted && !m.deleted_at && (
                         <button type="button" onClick={() => document.getElementById(`msg-${quoted.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
-                          className="block w-full text-left rounded-xl px-2.5 py-1.5 mb-1.5 border-l-2 border-accent bg-black/5 text-xs">
+                          className={`block w-full text-left rounded-xl px-2.5 py-1.5 mb-1.5 border-l-2 text-xs ${mine ? "border-accent-ink/50 bg-black/10" : "border-accent bg-black/5"}`}>
                           <span className="block font-medium">{quoted.author_id === me.id ? t("common.you") : other.name}</span>
                           <span className="block truncate opacity-80">{previewFor(quoted, t, bodyOf(quoted))}</span>
                         </button>
@@ -513,7 +525,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
                         <span className="inline-flex items-center gap-1.5 text-sm"><AppIcon name="trash" size={13} /> {t("messaging.deleted")}</span>
                       ) : editing?.id === m.id ? (
                         <div className="grid gap-2 min-w-52">
-                          <textarea className="field !bg-transparent !border-white/20" value={editing.body} maxLength={4000} onChange={(e) => setEditing({ id: m.id, body: e.target.value })} />
+                          <textarea className={`field !bg-transparent ${mine ? "!border-black/25 !text-accent-ink" : "!border-white/20"}`} value={editing.body} maxLength={4000} onChange={(e) => setEditing({ id: m.id, body: e.target.value })} />
                           <div className="flex gap-2">
                             <button className="btn btn-primary !min-h-9 !px-3 text-xs" onClick={async () => {
                               const editedAt = new Date().toISOString();
@@ -533,7 +545,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
                         m.enc === 1 && bodyOf(m) === null ? (
                           <p className="inline-flex items-center gap-1.5 text-sm italic opacity-70"><AppIcon name="lock" size={13} /> {t(undecryptable(m) ? "e2ee.cannotDecrypt" : "e2ee.notDecrypted")}</p>
                         ) : (
-                          <p className="whitespace-pre-wrap break-words">{bodyOf(m)}</p>
+                          <p className={isEmojiOnly(bodyOf(m)) ? "text-[2.6rem] leading-[1.15]" : "whitespace-pre-wrap break-words"}>{bodyOf(m)}</p>
                         )
                       ) : m.kind === "sticker" ? (
                         isStickerId(bodyOf(m) ?? "") ? <Sticker id={bodyOf(m) as StickerId} size={84} /> : null
@@ -563,7 +575,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
                         <div className={`flex items-center gap-1 mt-1 text-[0.62rem] opacity-70 ${mine ? "justify-end" : ""}`}>
                           {m.edited_at && <span>{t("journal.edited")}</span>}
                           <span>{time(m.created_at)}</span>
-                          {mine && last.id === lastMineId && <AppIcon name={read ? "readAll" : "check"} size={13} className={read ? "text-accent" : ""} />}
+                          {mine && last.id === lastMineId && <AppIcon name={read ? "readAll" : "check"} size={13} className={read ? "text-accent-ink !opacity-100" : ""} />}
                         </div>
                       )}
                     </PressTarget>
@@ -629,6 +641,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
             ))}
           </div>
         )}
+        {emojiOpen && <EmojiPicker onPick={insertEmoji} />}
         {stickersOpen && (
           <div className="grid grid-cols-5 gap-1.5 max-h-40 overflow-y-auto" role="listbox" aria-label={t("messaging.stickers")}>
             {STICKER_IDS.map((id) => (
@@ -664,11 +677,14 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
                   <AppIcon name="attach" size={20} />
                   <input type="file" accept="image/*" multiple className="sr-only" onChange={(e) => { const list = Array.from(e.target.files ?? []).filter(isAcceptedImage); setFiles((f) => [...f, ...list].slice(0, 6)); e.target.value = ""; }} />
                 </label>
-                <button type="button" className={`icon-btn !size-10 ${stickersOpen ? "bg-accent/20 text-accent" : ""}`} aria-label={t("messaging.stickers")} aria-pressed={stickersOpen} onClick={() => setStickersOpen((o) => !o)}>
+                <button type="button" className={`icon-btn !size-10 ${stickersOpen ? "bg-accent/20 text-accent" : ""}`} aria-label={t("messaging.stickers")} aria-pressed={stickersOpen} onClick={() => { setStickersOpen((o) => !o); setEmojiOpen(false); }}>
                   <AppIcon name="sparkle" size={20} />
                 </button>
               </div>
             )}
+            <button type="button" className={`icon-btn !size-10 shrink-0 ${emojiOpen ? "bg-accent/20 text-accent" : ""}`} aria-label={t("messaging.emojis")} aria-pressed={emojiOpen} onClick={() => { setEmojiOpen((o) => !o); setStickersOpen(false); }}>
+              <AppIcon name="emoji" size={20} />
+            </button>
             <textarea ref={inputRef} className="field !min-h-11 !py-2.5 !rounded-3xl !resize-none flex-1 min-w-0 max-h-32" rows={1} value={text} maxLength={4000}
               placeholder={t("messaging.placeholder")} aria-label={t("messaging.placeholder")}
               onChange={(e) => onType(e.target.value)}

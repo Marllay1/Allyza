@@ -18,7 +18,7 @@ export default async function MessagesChatPage() {
   if (!otherId) redirect("/messages");
 
   const [{ data: messages }, { data: reactions }, partner, { data: cursors }] = await Promise.all([
-    supabase.from("messages").select("id, author_id, kind, body, enc, storage_path, duration_ms, reply_to, edited_at, deleted_at, created_at").order("created_at", { ascending: false }).limit(150),
+    supabase.from("messages").select("*").order("created_at", { ascending: false }).limit(150),
     supabase.from("reactions").select("id, target_type, target_id, emoji, author_id").eq("target_type", "message").limit(1000),
     getPartner(),
     supabase.from("message_cursors").select("user_id, last_read_at"),

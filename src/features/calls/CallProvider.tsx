@@ -6,7 +6,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { CallOverlay, type CallPerson, type CallPhase } from "@/features/calls/CallOverlay";
 import { useRing } from "@/features/calls/use-ring";
-import { playSfx, type Sfx } from "@/lib/sfx";
+import { playSfx, setAudioSession, type Sfx } from "@/lib/sfx";
 import { useE2ee } from "@/features/e2ee/E2eeProvider";
 
 type Kind = "audio" | "video";
@@ -66,6 +66,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
   const outputIdx = useRef(0);
   const closedIds = useRef<Set<string>>(new Set());
   const ice = useRef<{ servers: RTCIceServer[]; at: number } | null>(null);
+  const hasRelay = useRef(true);
   const dismiss = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onSignal = useRef<(s: Signal) => void>(() => {});
   const endRef = useRef<(reason?: "hangup" | "failed" | "missed") => void>(() => {});
@@ -114,9 +115,13 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     const cached = ice.current;
     if (cached && Date.now() - cached.at < 2 * 3600_000) return cached.servers;
     const r = await getIceServersAction();
-    if (!r.ok) return [{ urls: "stun:stun.l.google.com:19302" }] as RTCIceServer[];
-    ice.current = { servers: r.data as RTCIceServer[], at: Date.now() };
-    return ice.current.servers;
+    if (!r.ok) { hasRelay.current = false; return [{ urls: "stun:stun.l.google.com:19302" }] as RTCIceServer[]; }
+    const servers = r.data as RTCIceServer[];
+    // Without a TURN relay, two phones on different networks (Wi-Fi vs 4G) usually cannot reach each other.
+    hasRelay.current = servers.some((s) => ([] as string[]).concat(s.urls).some((u) => u.startsWith("turn")));
+    if (!hasRelay.current) console.warn("[call] no TURN relay configured: calls across different networks will fail");
+    ice.current = { servers, at: Date.now() };
+    return servers;
   }, []);
 
   /** Builds the peer connection with STUN + short-lived TURN credentials minted server-side. */
@@ -191,7 +196,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     const status = reason === "failed" ? "failed" : reason === "missed" ? "missed" : c.role === "caller" && !c.answered ? "cancelled" : "ended";
     send("hangup");
     void updateCallStatusAction({ id: c.id, status });
-    cleanup(reason === "failed" ? t("call.failed") : reason === "missed" ? t(c.acked ? "call.noAnswer" : "call.unreachable", { name: otherName }) : null, reason === "hangup" ? "hangup" : "dropped", reason === "missed");
+    cleanup(reason === "failed" ? t(hasRelay.current ? "call.failed" : "call.failedNoRelay") : reason === "missed" ? t(c.acked ? "call.noAnswer" : "call.unreachable", { name: otherName }) : null, reason === "hangup" ? "hangup" : "dropped", reason === "missed");
   }, [cleanup, otherName, send, t]);
 
   useEffect(() => { endRef.current = endCall; }, [endCall]);
@@ -231,6 +236,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
   }, [phase]);
 
   const startCall = useCallback(async (k: Kind) => {
+    setAudioSession("auto");
     if (live.current || (phase !== "idle" && phase !== "ended")) return;
     if (dismiss.current) clearTimeout(dismiss.current);
     // Encryption is on for this couple but not usable on this device (locked, or the other key is unconfirmed): no unverifiable call.
@@ -265,7 +271,8 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
         if (cur && !cur.answered && cur.offerSdp) { send("offer", { sdp: cur.offerSdp, mac: cur.offerMac ?? undefined }); cur.sentIce.forEach((cand) => send("ice", { candidate: cand })); }
       }, 3000));
       c.timers.push(setTimeout(() => { if (live.current && !live.current.answered) endCall("missed"); }, RING_TIMEOUT_MS));
-    } catch {
+    } catch (e) {
+      console.error("[call] could not start", e);
       void updateCallStatusAction({ id, status: "failed" });
       cleanup(t("call.failed"), "dropped");
     }
@@ -275,6 +282,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     const c = live.current;
     if (!c || c.role !== "callee" || phase !== "incoming") return;
     setPhase("connecting");
+    setAudioSession("auto"); // the ring asked iOS for "playback"; the microphone needs the default session
     let stream: MediaStream;
     try { stream = await getMedia(c.kind); } catch {
       send("reject"); void updateCallStatusAction({ id: c.id, status: "rejected" });
@@ -303,7 +311,8 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
       live.current!.timers.push(setTimeout(() => {
         if (live.current?.id === c.id && !live.current.connectedAt) endCall("failed");
       }, 30_000));
-    } catch {
+    } catch (e) {
+      console.error("[call] could not answer", e);
       send("hangup"); void updateCallStatusAction({ id: c.id, status: "failed" });
       cleanup(t("call.failed"));
     }

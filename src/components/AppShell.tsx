@@ -129,7 +129,7 @@ export function AppShell({ userId, role, softMode, initialUnread, children }: Pr
         className={`room relative flex flex-col ${chatOpen ? "h-dvh overflow-hidden" : "min-h-dvh"}`}>
         {themeSpace === "refuge" && !chatOpen && <RefugeAtmosphere />}
         {!chatOpen && (
-          <header className="relative z-20 flex items-center justify-between px-4 pt-[max(0.7rem,env(safe-area-inset-top))] pb-1">
+          <header className="relative z-20 flex items-center justify-between px-4 pt-[calc(env(safe-area-inset-top,0px)+0.55rem)] pb-1">
             <Link href="/home" className="flex items-center gap-2.5" aria-label="Allyza">
               <AllyzaMark height={34} />
               <span className="font-display text-2xl tracking-wide lowercase">allyza</span>

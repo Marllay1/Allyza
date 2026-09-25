@@ -26,7 +26,7 @@ export const ICONS = {
   // actions
   close: X, check: Check, plus: Plus, trash: Trash2, edit: Pencil, send: Send, camera: Camera,
   addImage: ImagePlus, copy: Copy, eye: Eye, eyeOff: EyeOff, download: Download, external: ExternalLink,
-  play: Play, pause: Pause, stop: Square, volume: Volume2,
+  emoji: Smile, play: Play, pause: Pause, stop: Square, volume: Volume2,
   // security & settings
   lock: Lock, unlock: LockOpen, key: KeyRound, shield: ShieldCheck, privacy: Shield, bell: Bell,
   language: Languages, logout: LogOut, palette: Palette, info: Info, warn: TriangleAlert,

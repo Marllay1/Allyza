@@ -24,12 +24,12 @@ export async function sendTextMessageAction(input: { body: string; replyTo?: str
   if (!rateLimit(`msg:${c.uid}`, 60, 60_000)) return fail("rate");
   const { data, error } = await c.supabase
     .from("messages")
-    .insert({ couple_id: c.couple.id, kind: "text", body: p.data.body, enc: p.data.enc ? 1 : 0, reply_to: p.data.replyTo ?? null })
-    .select("id, couple_id, author_id, kind, body, enc, storage_path, duration_ms, reply_to, edited_at, deleted_at, created_at")
+    .insert({ couple_id: c.couple.id, kind: "text", body: p.data.body, ...(p.data.enc ? { enc: 1 } : {}), reply_to: p.data.replyTo ?? null })
+    .select("*")
     .single();
   if (error || !data) return insertError(error?.message);
   void pingPartner("message");
-  return ok(data);
+  return ok(data as Record<string, unknown>);
 }
 
 export async function sendStickerMessageAction(input: { stickerId?: string; cipher?: string; replyTo?: string }) {
@@ -41,12 +41,12 @@ export async function sendStickerMessageAction(input: { stickerId?: string; ciph
   if (!rateLimit(`msg:${c.uid}`, 60, 60_000)) return fail("rate");
   const { data, error } = await c.supabase
     .from("messages")
-    .insert({ couple_id: c.couple.id, kind: "sticker", body: p.data.cipher ?? p.data.stickerId, enc: p.data.cipher ? 1 : 0, reply_to: p.data.replyTo ?? null })
-    .select("id, couple_id, author_id, kind, body, enc, storage_path, duration_ms, reply_to, edited_at, deleted_at, created_at")
+    .insert({ couple_id: c.couple.id, kind: "sticker", body: p.data.cipher ?? p.data.stickerId, ...(p.data.cipher ? { enc: 1 } : {}), reply_to: p.data.replyTo ?? null })
+    .select("*")
     .single();
   if (error || !data) return insertError(error?.message);
   void pingPartner("message");
-  return ok(data);
+  return ok(data as Record<string, unknown>);
 }
 
 const mediaInput = z.object({
@@ -69,15 +69,15 @@ export async function sendMediaMessageAction(input: z.infer<typeof mediaInput>) 
   if (!okPath(p.data.path, c.couple.id)) return fail("forbidden");
   const { data, error } = await c.supabase
     .from("messages")
-    .insert({ couple_id: c.couple.id, kind: p.data.kind, storage_path: p.data.path, body: p.data.cipher ?? null, enc: p.data.cipher ? 1 : 0, duration_ms: p.data.durationMs ?? null, reply_to: p.data.replyTo ?? null })
-    .select("id, couple_id, author_id, kind, body, enc, storage_path, duration_ms, reply_to, edited_at, deleted_at, created_at")
+    .insert({ couple_id: c.couple.id, kind: p.data.kind, storage_path: p.data.path, body: p.data.cipher ?? null, ...(p.data.cipher ? { enc: 1 } : {}), duration_ms: p.data.durationMs ?? null, reply_to: p.data.replyTo ?? null })
+    .select("*")
     .single();
   if (error || !data) {
     await c.supabase.storage.from("couple-media").remove([p.data.path]);
     return insertError(error?.message);
   }
   void pingPartner("message");
-  return ok(data);
+  return ok(data as Record<string, unknown>);
 }
 
 export async function editMessageAction(input: { id: string; body: string; enc?: boolean }) {
@@ -86,7 +86,11 @@ export async function editMessageAction(input: { id: string; body: string; enc?:
   if (p.data.enc ? !cipherText.safeParse(p.data.body).success : p.data.body.length > 4000) return fail("invalid");
   const c = await coupleCtx();
   if (!c) return fail("auth");
-  const { data, error } = await c.supabase.from("messages").update({ body: p.data.body }).eq("id", p.data.id).eq("author_id", c.uid).eq("kind", "text").eq("enc", p.data.enc ? 1 : 0).select("id");
+  // A plaintext edit must not land in an encrypted message (or the reverse). `enc` is read from the row, so this also
+  // works before the encryption migration has been applied (the column is then simply absent = plaintext).
+  const { data: row } = await c.supabase.from("messages").select("*").eq("id", p.data.id).eq("author_id", c.uid).maybeSingle();
+  if (!row || row.kind !== "text" || (row.enc === 1) !== !!p.data.enc) return fail("forbidden");
+  const { data, error } = await c.supabase.from("messages").update({ body: p.data.body }).eq("id", p.data.id).eq("author_id", c.uid).eq("kind", "text").select("id");
   return error || !data?.length ? fail("forbidden") : ok();
 }
 

@@ -9,7 +9,7 @@ import { useI18n } from "@/lib/i18n/provider";
 export function ChatHeader({ name, avatar, tone, actions }: { name: string; avatar: string | null; tone: "rose" | "gold"; actions?: React.ReactNode }) {
   const { t } = useI18n();
   return (
-    <div className="relative z-20 shrink-0 flex items-center gap-3 px-2 pt-[max(0.6rem,env(safe-area-inset-top))] pb-2.5">
+    <div className="relative z-20 shrink-0 flex items-center gap-3 px-2 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] pb-2.5">
       <Link href="/messages" aria-label={t("common.back")} className="icon-btn shrink-0 text-muted hover:text-ink">
         <AppIcon name="back" size={22} />
       </Link>
