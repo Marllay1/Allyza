@@ -2,6 +2,7 @@ import { AppShell, type Unread } from "@/components/AppShell";
 import { AppLockGuard } from "@/features/applock/AppLockGuard";
 import { LockScreen } from "@/features/applock/LockScreen";
 import { CallProvider } from "@/features/calls/CallProvider";
+import { E2eeProvider } from "@/features/e2ee/E2eeProvider";
 import { getLockRow, isLockedOut, isUnlocked } from "@/lib/app-lock";
 import { getPartner } from "@/lib/nickname";
 import { requireViewer } from "@/lib/session";
@@ -28,7 +29,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const unread: Unread = { journal: 0, media: 0, refuge: 0, little: 0, surprise: 0, message: 0 };
   for (const n of data ?? []) unread[n.kind as keyof Unread]++;
 
+  const partnerId = viewer.couple ? (viewer.id === viewer.couple.herId ? viewer.couple.partnerId : viewer.couple.herId) : null;
   const app = (
+    <E2eeProvider userId={viewer.id} coupleId={viewer.couple?.id ?? ""} partnerId={partnerId}>
     <CallProvider
       coupleId={viewer.couple?.id ?? ""}
       myId={viewer.id}
@@ -38,6 +41,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {children}
       </AppShell>
     </CallProvider>
+    </E2eeProvider>
   );
   return lock ? <AppLockGuard idleSeconds={lock.idle_seconds}>{app}</AppLockGuard> : app;
 }

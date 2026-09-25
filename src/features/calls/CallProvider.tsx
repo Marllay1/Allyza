@@ -7,15 +7,16 @@ import { createClient } from "@/lib/supabase/client";
 import { CallOverlay, type CallPerson, type CallPhase } from "@/features/calls/CallOverlay";
 import { useRing } from "@/features/calls/use-ring";
 import { playSfx, type Sfx } from "@/lib/sfx";
+import { useE2ee } from "@/features/e2ee/E2eeProvider";
 
 type Kind = "audio" | "video";
-type Signal = { callId: string; from: string; type: "ringing" | "offer" | "answer" | "ice" | "hangup" | "reject" | "media"; sdp?: string; candidate?: RTCIceCandidateInit; muted?: boolean; cameraOff?: boolean; kind?: Kind };
+type Signal = { callId: string; from: string; type: "ringing" | "offer" | "answer" | "ice" | "hangup" | "reject" | "media"; sdp?: string; candidate?: RTCIceCandidateInit; muted?: boolean; cameraOff?: boolean; kind?: Kind; mac?: string };
 type CallRow = { id: string; caller_id: string; callee_id: string; kind: Kind; status: string; started_at: string };
 
 /** Everything one live call needs that shouldn't cause a re-render when it changes. */
 type Live = {
   id: string; kind: Kind; role: "caller" | "callee";
-  answered: boolean; acked: boolean; offerSdp: string | null; lastOffer: string | null;
+  answered: boolean; acked: boolean; offerSdp: string | null; offerMac: string | null; lastOffer: string | null;
   sentIce: RTCIceCandidateInit[]; remoteIce: RTCIceCandidateInit[];
   connectedAt: number | null; iceRestarts: number;
   timers: ReturnType<typeof setTimeout>[]; intervals: ReturnType<typeof setInterval>[];
@@ -31,6 +32,12 @@ const closedStatuses = ["cancelled", "missed", "rejected", "ended", "failed"];
 
 export function CallProvider({ coupleId, myId, other, children }: { coupleId: string; myId: string; other: CallPerson | null; children: React.ReactNode }) {
   const { t } = useI18n();
+  // When both people have encryption on, every offer/answer carries a MAC over its DTLS fingerprints made with a key only
+  // the two of them share: the signalling server cannot swap in its own fingerprint to sit in the middle of the call.
+  const e2ee = useE2ee();
+  const e2eeRef = useRef(e2ee);
+  useEffect(() => { e2eeRef.current = e2ee; }, [e2ee]);
+  const signSdp = (callId: string, role: "offer" | "answer", sdp: string | undefined) => (sdp ? e2eeRef.current.signCallSdp(callId, role, sdp) : Promise.resolve(undefined));
   const [phase, setPhase] = useState<CallPhase | "idle">("idle");
   const [kind, setKind] = useState<Kind>("audio");
   const [ringing, setRinging] = useState(false);
@@ -157,7 +164,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
           c.iceRestarts += 1;
           void p.createOffer({ iceRestart: true }).then(async (offer) => {
             await p.setLocalDescription(offer);
-            send("offer", { sdp: offer.sdp });
+            send("offer", { sdp: offer.sdp, mac: await signSdp(c.id, "offer", offer.sdp) });
           }).catch(() => {});
         }
         const id = c.id;
@@ -226,6 +233,12 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
   const startCall = useCallback(async (k: Kind) => {
     if (live.current || (phase !== "idle" && phase !== "ended")) return;
     if (dismiss.current) clearTimeout(dismiss.current);
+    // Encryption is on for this couple but not usable on this device (locked, or the other key is unconfirmed): no unverifiable call.
+    if (e2eeRef.current.mustEncrypt && !e2eeRef.current.keys) {
+      if (!e2eeRef.current.partnerChanged) e2eeRef.current.openDialog("restore");
+      else cleanup(t("e2ee.callInsecure"));
+      return;
+    }
     if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === "undefined") { cleanup(t("call.unsupported")); return; }
     setKind(k); setPhase("outgoing"); setNotice(null); setMinimized(false); setCanRetry(false);
     let stream: MediaStream;
@@ -233,7 +246,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     const created = await startCallAction({ kind: k });
     if (!created.ok) { stream.getTracks().forEach((tr) => tr.stop()); cleanup(t(`errors.${created.error}`)); return; }
     const id = (created.data as { id: string }).id;
-    live.current = { id, kind: k, role: "caller", answered: false, acked: false, offerSdp: null, lastOffer: null, sentIce: [], remoteIce: [], connectedAt: null, iceRestarts: 0, timers: [], intervals: [] };
+    live.current = { id, kind: k, role: "caller", answered: false, acked: false, offerSdp: null, offerMac: null, lastOffer: null, sentIce: [], remoteIce: [], connectedAt: null, iceRestarts: 0, timers: [], intervals: [] };
     local.current = stream;
     setLocalStream(stream);
     try {
@@ -243,11 +256,13 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
       const c = live.current;
       if (!c) return;
       c.offerSdp = offer.sdp ?? null;
-      send("offer", { sdp: offer.sdp });
+      c.offerMac = (await signSdp(id, "offer", offer.sdp)) ?? null;
+      if (live.current?.id !== id) return;
+      send("offer", { sdp: offer.sdp, mac: c.offerMac ?? undefined });
       // The other phone may only be waking up: keep offering until it answers, then give up honestly.
       c.intervals.push(setInterval(() => {
         const cur = live.current;
-        if (cur && !cur.answered && cur.offerSdp) { send("offer", { sdp: cur.offerSdp }); cur.sentIce.forEach((cand) => send("ice", { candidate: cand })); }
+        if (cur && !cur.answered && cur.offerSdp) { send("offer", { sdp: cur.offerSdp, mac: cur.offerMac ?? undefined }); cur.sentIce.forEach((cand) => send("ice", { candidate: cand })); }
       }, 3000));
       c.timers.push(setTimeout(() => { if (live.current && !live.current.answered) endCall("missed"); }, RING_TIMEOUT_MS));
     } catch {
@@ -273,13 +288,18 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
       for (let i = 0; i < 100 && live.current?.id === c.id && !live.current.offerSdp; i++) await new Promise((r) => setTimeout(r, 100));
       const sdp = live.current?.id === c.id ? live.current.offerSdp : null;
       if (!sdp) throw new Error("no offer");
+      if (!(await e2eeRef.current.verifyCallSdp(c.id, "offer", sdp, live.current!.offerMac ?? undefined))) {
+        send("hangup"); void updateCallStatusAction({ id: c.id, status: "failed" });
+        cleanup(t("e2ee.callInsecure"), "dropped");
+        return;
+      }
       live.current!.lastOffer = sdp;
       live.current!.answered = true;
       await p.setRemoteDescription({ type: "offer", sdp });
       await flushRemoteIce(p);
       const answer = await p.createAnswer();
       await p.setLocalDescription(answer);
-      send("answer", { sdp: answer.sdp });
+      send("answer", { sdp: answer.sdp, mac: await signSdp(c.id, "answer", answer.sdp) });
       live.current!.timers.push(setTimeout(() => {
         if (live.current?.id === c.id && !live.current.connectedAt) endCall("failed");
       }, 30_000));
@@ -300,7 +320,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
   const showIncoming = useCallback((row: CallRow) => {
     if (live.current || row.callee_id !== myId || row.status !== "ringing" || closedIds.current.has(row.id)) return;
     if (dismiss.current) clearTimeout(dismiss.current);
-    live.current = { id: row.id, kind: row.kind, role: "callee", answered: false, acked: false, offerSdp: null, lastOffer: null, sentIce: [], remoteIce: [], connectedAt: null, iceRestarts: 0, timers: [], intervals: [] };
+    live.current = { id: row.id, kind: row.kind, role: "callee", answered: false, acked: false, offerSdp: null, offerMac: null, lastOffer: null, sentIce: [], remoteIce: [], connectedAt: null, iceRestarts: 0, timers: [], intervals: [] };
     setKind(row.kind); setNotice(null); setPhase("incoming"); setMinimized(false);
     send("ringing");
     live.current.timers.push(setTimeout(() => { if (live.current?.id === row.id && !live.current.answered) cleanup(t("call.missed", { name: otherName }), "dropped", true); }, STALE_RING_MS));
@@ -312,7 +332,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
       // The first offer over the broadcast channel rings the phone at once; the database row only backs it up.
       if (!live.current && m.type === "offer" && m.kind && m.sdp && !closedIds.current.has(m.callId)) {
         showIncoming({ id: m.callId, caller_id: m.from, callee_id: myId, kind: m.kind, status: "ringing", started_at: new Date().toISOString() });
-        if (live.current) (live.current as Live).offerSdp = m.sdp;
+        if (live.current) { (live.current as Live).offerSdp = m.sdp; (live.current as Live).offerMac = m.mac ?? null; }
         return;
       }
       const c = live.current;
@@ -323,30 +343,39 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
           if (c.role === "caller" && !c.answered) {
             c.acked = true;
             setRinging(true);
-            if (c.offerSdp) { send("offer", { sdp: c.offerSdp }); c.sentIce.forEach((cand) => send("ice", { candidate: cand })); }
+            if (c.offerSdp) { send("offer", { sdp: c.offerSdp, mac: c.offerMac ?? undefined }); c.sentIce.forEach((cand) => send("ice", { candidate: cand })); }
           }
           break;
         case "offer":
           if (c.role !== "callee" || !m.sdp || m.sdp === c.lastOffer) break;
-          if (!c.answered) { c.offerSdp = m.sdp; break; }
+          if (!c.answered) { c.offerSdp = m.sdp; c.offerMac = m.mac ?? null; break; }
           // A later offer on a live call is the caller restarting ICE after a network change.
           if (p) {
             c.lastOffer = m.sdp;
-            void p.setRemoteDescription({ type: "offer", sdp: m.sdp }).then(async () => {
+            const restartSdp = m.sdp;
+            void e2eeRef.current.verifyCallSdp(c.id, "offer", restartSdp, m.mac).then(async (ok) => {
+              if (!ok) { send("hangup"); void updateCallStatusAction({ id: c.id, status: "failed" }); cleanup(t("e2ee.callInsecure"), "dropped"); return; }
+              await p.setRemoteDescription({ type: "offer", sdp: restartSdp });
               await flushRemoteIce(p);
               const ans = await p.createAnswer();
               await p.setLocalDescription(ans);
-              send("answer", { sdp: ans.sdp });
+              send("answer", { sdp: ans.sdp, mac: await signSdp(c.id, "answer", ans.sdp) });
             }).catch(() => {});
           }
           break;
         case "answer":
           if (c.role !== "caller" || !p || !m.sdp) break;
           if (c.answered && p.signalingState === "stable") break;
-          c.answered = true;
-          setRinging(false);
-          setPhase((cur) => (cur === "outgoing" ? "connecting" : cur));
-          void p.setRemoteDescription({ type: "answer", sdp: m.sdp }).then(() => flushRemoteIce(p)).catch(() => {});
+          {
+            const answerSdp = m.sdp;
+            void e2eeRef.current.verifyCallSdp(c.id, "answer", answerSdp, m.mac).then((ok) => {
+              if (!ok) { send("hangup"); void updateCallStatusAction({ id: c.id, status: "failed" }); cleanup(t("e2ee.callInsecure"), "dropped"); return; }
+              c.answered = true;
+              setRinging(false);
+              setPhase((cur) => (cur === "outgoing" ? "connecting" : cur));
+              return p.setRemoteDescription({ type: "answer", sdp: answerSdp }).then(() => flushRemoteIce(p));
+            }).catch(() => {});
+          }
           break;
         case "ice":
           if (!m.candidate) break;
@@ -461,7 +490,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
       {other && phase !== "idle" && (
         <CallOverlay
           phase={phase} kind={kind} other={other} ringing={ringing} reconnecting={reconnecting} elapsed={elapsed} notice={notice}
-          muted={muted} cameraOff={cameraOff} canRetry={canRetry} onRedial={() => void startCall(kind)} onCloseEnded={closeEnded} minimized={minimized} onMinimize={() => setMinimized(true)} onExpand={() => setMinimized(false)} speakerOn={speakerOn} canSwitchOutput={outputs > 1 && typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype}
+          muted={muted} cameraOff={cameraOff} secure={e2ee.mustEncrypt && e2ee.keys} canRetry={canRetry} onRedial={() => void startCall(kind)} onCloseEnded={closeEnded} minimized={minimized} onMinimize={() => setMinimized(true)} onExpand={() => setMinimized(false)} speakerOn={speakerOn} canSwitchOutput={outputs > 1 && typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype}
           localStream={localStream} remoteStream={remoteStream} remoteCameraOff={remoteCameraOff} remoteMuted={remoteMuted} facingUser={facingUser}
           onAccept={() => void accept()} onDecline={decline} onHangup={() => endCall("hangup")}
           onToggleMute={toggleMute} onToggleCamera={toggleCamera} onFlipCamera={() => void flipCamera()} onCycleOutput={() => void cycleOutput()}

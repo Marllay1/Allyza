@@ -18,7 +18,7 @@ export default async function MessagesChatPage() {
   if (!otherId) redirect("/messages");
 
   const [{ data: messages }, { data: reactions }, partner, { data: cursors }] = await Promise.all([
-    supabase.from("messages").select("id, author_id, kind, body, storage_path, duration_ms, reply_to, edited_at, deleted_at, created_at").order("created_at", { ascending: false }).limit(150),
+    supabase.from("messages").select("id, author_id, kind, body, enc, storage_path, duration_ms, reply_to, edited_at, deleted_at, created_at").order("created_at", { ascending: false }).limit(150),
     supabase.from("reactions").select("id, target_type, target_id, emoji, author_id").eq("target_type", "message").limit(1000),
     getPartner(),
     supabase.from("message_cursors").select("user_id, last_read_at"),
@@ -29,12 +29,6 @@ export default async function MessagesChatPage() {
   const myCursor = cursors?.find((c) => c.user_id === v.id)?.last_read_at ?? null;
   const theirCursor = cursors?.find((c) => c.user_id === otherId)?.last_read_at ?? null;
 
-  const imagePaths = (messages ?? []).filter((m) => m.kind === "image" && m.storage_path).map((m) => m.storage_path as string);
-  let photos: string[] = [];
-  if (imagePaths.length) {
-    const { data: signed } = await supabase.storage.from("couple-media").createSignedUrls(imagePaths, 3600);
-    photos = (signed ?? []).map((s) => s.signedUrl).filter((u): u is string => Boolean(u));
-  }
 
   const otherTone = partner?.tone ?? "gold";
   return (
@@ -44,7 +38,7 @@ export default async function MessagesChatPage() {
         avatar={otherAvatar}
         tone={otherTone}
         actions={<>
-          <ChatHeaderMenus myId={v.id} name={otherName} avatar={otherAvatar} tone={otherTone} photos={photos} />
+          <ChatHeaderMenus myId={v.id} name={otherName} avatar={otherAvatar} tone={otherTone} />
         </>}
       />
       <ChatClient

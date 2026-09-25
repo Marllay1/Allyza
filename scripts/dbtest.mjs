@@ -252,4 +252,34 @@ for (const [who, name] of [[her, "owner"], [him, "partner"], [eve, "outsider"]])
   });
 }
 
+// End-to-end encryption: keys are per person, the wrapped private key stays private, and once both
+// members have a key the database itself refuses plaintext messages.
+const PUB = "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+const keyRow = (pub) => `insert into e2ee_keys(couple_id, public_key, wrapped_private, kdf_salt, kdf_iterations) values ('${c.id}','${pub}','${"w".repeat(120)}','${"s".repeat(24)}',600000)`;
+await asUser(her.id, async () => {
+  await db.query(keyRow(PUB));
+  await expectFail("cannot store a second key row for the same person", () => db.query(keyRow(PUB)));
+  await expectFail("weak KDF iteration count refused", () => db.query(`update e2ee_keys set kdf_iterations = 10`));
+});
+await asUser(eve.id, async () => {
+  check("outsider sees no e2ee keys", (await q(`select * from e2ee_keys`)).length === 0);
+  check("outsider gets no partner public key", (await q(`select * from partner_public_key()`)).length === 0);
+  await expectFail("outsider cannot plant a key in someone else's couple", () => db.query(keyRow(PUB)));
+});
+await asUser(him.id, async () => {
+  check("partner cannot read the wrapped private key row", (await q(`select * from e2ee_keys`)).length === 0);
+  const pk = await q(`select * from partner_public_key()`);
+  check("partner reads only her PUBLIC key", pk.length === 1 && pk[0].public_key === PUB && !("wrapped_private" in pk[0]));
+  await db.query(`insert into messages(couple_id, kind, body) values ('${c.id}','text','plain before both have keys')`);
+  check("plaintext still accepted while only one member has a key", true);
+});
+await asUser(him.id, async () => { await db.query(keyRow(PUB.replace("BAAA", "BAAB"))); });
+await asUser(her.id, async () => {
+  await expectFail("plaintext message refused once both have keys", () => db.query(`insert into messages(couple_id, kind, body) values ('${c.id}','text','downgrade attempt')`));
+  const r = await q(`insert into messages(couple_id, kind, body, enc) values ('${c.id}','text','1.${"A".repeat(5000)}',1) returning id`);
+  check("ciphertext (long) accepted", r.length === 1);
+  await db.query(`update messages set enc = 0 where id='${r[0].id}'`);
+  check("enc marker cannot be flipped afterwards", (await q(`select enc from messages where id='${r[0].id}'`))[0].enc === 1);
+});
+
 console.log(process.exitCode ? "\nSOME CHECKS FAILED" : "\nALL CHECKS PASSED");

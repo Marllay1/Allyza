@@ -16,7 +16,8 @@ export type ErrCode =
   | "credentials"
   | "busy"
   | "wrong_secret"
-  | "app_locked";
+  | "app_locked"
+  | "e2ee_required";
 
 export type Result<T = undefined> =
   | ({ ok: true } & (T extends undefined ? object : { data: T }))

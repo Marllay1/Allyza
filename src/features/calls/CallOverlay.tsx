@@ -25,6 +25,8 @@ export type OverlayProps = {
   facingUser: boolean;
   canSwitchOutput: boolean;
   speakerOn: boolean;
+  /** Both people have end-to-end encryption on and this call's signalling was verified with their shared key. */
+  secure: boolean;
   canRetry: boolean;
   onRedial: () => void;
   onCloseEnded: () => void;
@@ -289,6 +291,7 @@ export function CallOverlay(p: OverlayProps) {
             {p.remoteMuted && p.phase === "connected" && <AppIcon name="micOff" size={16} label={t("call.mute")} />}
           </p>
           <p className="text-sm opacity-85 tabular-nums drop-shadow" role="status" aria-live="polite">{status}</p>
+          {p.secure && p.phase === "connected" && <p className="text-[0.7rem] opacity-70 inline-flex items-center gap-1"><AppIcon name="lock" size={11} /> {t("e2ee.callSecure")}</p>}
           {video && p.phase === "connected" && p.remoteCameraOff && <p className="text-xs opacity-70">{t("call.remoteCameraOff", { name: p.other.name })}</p>}
         </div>
 

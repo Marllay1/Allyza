@@ -20,6 +20,8 @@ import { playSfx } from "@/lib/sfx";
 import { haptic, setLocalPref, useLocalPref } from "@/lib/local-pref";
 import { useCall } from "@/features/calls/CallProvider";
 import { PhotoViewer } from "@/features/messaging/PhotoViewer";
+import { publishPhotos } from "@/features/messaging/media-store";
+import { useE2ee } from "@/features/e2ee/E2eeProvider";
 import { useVoiceRecorder } from "@/lib/use-voice-recorder";
 import { useUnread } from "@/components/AppShell";
 import type { ErrCode } from "@/lib/action-utils";
@@ -28,12 +30,14 @@ export type ChatMessage = {
   id: string; author_id: string; kind: "text" | "image" | "audio" | "sticker"; body: string | null;
   storage_path: string | null; duration_ms: number | null; reply_to: string | null;
   edited_at: string | null; deleted_at: string | null; created_at: string; tmp?: boolean;
+  /** 1 = `body` is end-to-end ciphertext (for photos and voice notes: the encrypted file key). */
+  enc?: number;
 };
 
 /** Short label for a message preview (reply quotes, etc.) that doesn't render the full content. */
-function previewFor(m: ChatMessage, t: Translator): string {
+function previewFor(m: ChatMessage, t: Translator, body: string | null): string {
   if (m.deleted_at) return t("messaging.deleted");
-  if (m.kind === "text") return m.body ?? "";
+  if (m.kind === "text") return body ?? (m.enc === 1 ? t("e2ee.notDecrypted") : "");
   if (m.kind === "image") return t("messaging.aPhoto");
   if (m.kind === "sticker") return t("messaging.aSticker");
   return t("messaging.aVoiceNote");
@@ -147,7 +151,58 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
   const byId = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
   const mediaPaths = useMemo(() => messages.filter((m) => (m.kind === "image" || m.kind === "audio") && m.storage_path).map((m) => m.storage_path!), [messages]);
   const urls = useSignedUrls(mediaPaths);
-  const photoItems = useMemo(() => messages.filter((m) => m.kind === "image" && !m.deleted_at && m.storage_path && urls[m.storage_path]), [messages, urls]);
+
+  // End-to-end encryption: what the server stores is ciphertext, opened here with the shared key.
+  const e2ee = useE2ee();
+  const [plain, setPlain] = useState<Record<string, string | null>>({});
+  const [blobUrls, setBlobUrls] = useState<Record<string, string>>({});
+  const fetching = useRef(new Set<string>());
+  // A send refused because encryption is now required: the other person just turned it on, so re-read the keys.
+  const recheckKeys = e2ee.recheck;
+  useEffect(() => { if (error === "e2ee_required") recheckKeys(); }, [error, recheckKeys]);
+  const plainKey = (m: ChatMessage) => `${m.id}:${m.edited_at ?? ""}`;
+  const bodyOf = (m: ChatMessage): string | null => (m.enc === 1 ? plain[plainKey(m)] ?? null : m.body);
+  const undecryptable = (m: ChatMessage) => m.enc === 1 && plainKey(m) in plain && plain[plainKey(m)] === null;
+  const urlFor = (m: ChatMessage): string | undefined => (m.storage_path ? (m.enc === 1 ? blobUrls[m.storage_path] : urls[m.storage_path]) : undefined);
+
+  useEffect(() => {
+    if (!e2ee.canDecrypt) return;
+    const todo = messages.filter((m) => m.enc === 1 && m.body && !m.deleted_at && !(`${m.id}:${m.edited_at ?? ""}` in plain));
+    if (!todo.length) return;
+    let cancelled = false;
+    (async () => {
+      const out: Record<string, string | null> = {};
+      for (const m of todo) {
+        try { out[`${m.id}:${m.edited_at ?? ""}`] = await e2ee.decryptMessage(m.author_id, m.kind, m.body!); }
+        catch { out[`${m.id}:${m.edited_at ?? ""}`] = null; }
+      }
+      if (!cancelled) setPlain((p) => ({ ...p, ...out }));
+    })();
+    return () => { cancelled = true; };
+  }, [messages, plain, e2ee]);
+
+  // Encrypted photos / voice notes: download the ciphertext, open it with the key found in the message.
+  useEffect(() => {
+    for (const m of messages) {
+      const path = m.storage_path;
+      const info = m.enc === 1 ? plain[`${m.id}:${m.edited_at ?? ""}`] : null;
+      if (!path || !info || m.deleted_at || blobUrls[path] || fetching.current.has(path) || !urls[path]) continue;
+      fetching.current.add(path);
+      (async () => {
+        try {
+          const meta = JSON.parse(info) as { k: string; t: string };
+          const cipher = await (await fetch(urls[path])).arrayBuffer();
+          const blob = await e2ee.decryptBlob(cipher, meta.k, meta.t);
+          setBlobUrls((b) => ({ ...b, [path]: URL.createObjectURL(blob) }));
+        } catch { /* stays a placeholder */ }
+        fetching.current.delete(path);
+      })();
+    }
+  }, [messages, plain, urls, blobUrls, e2ee]);
+
+  const photoItems = useMemo(() => messages.filter((m) => m.kind === "image" && !m.deleted_at && m.storage_path && (m.enc === 1 ? blobUrls[m.storage_path] : urls[m.storage_path])), [messages, urls, blobUrls]);
+  const photoUrls = useMemo(() => photoItems.map((m) => (m.enc === 1 ? blobUrls[m.storage_path!] : urls[m.storage_path!])), [photoItems, urls, blobUrls]);
+  useEffect(() => { publishPhotos([...photoUrls].reverse()); return () => publishPhotos([]); }, [photoUrls]);
   const viewerIdx = viewer ? photoItems.findIndex((m) => m.id === viewer) : -1;
 
   const upsert = useCallback((m: ChatMessage) => {
@@ -192,7 +247,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
     const catchUp = async () => {
       if (document.visibilityState !== "visible") return;
       const known = messagesRef.current.filter((m) => !m.tmp).map((m) => m.created_at).sort().at(-1);
-      let q = supabase.from("messages").select("id, author_id, kind, body, storage_path, duration_ms, reply_to, edited_at, deleted_at, created_at").order("created_at", { ascending: true }).limit(100);
+      let q = supabase.from("messages").select("id, author_id, kind, body, enc, storage_path, duration_ms, reply_to, edited_at, deleted_at, created_at").order("created_at", { ascending: true }).limit(100);
       if (known) q = q.gt("created_at", known);
       const { data: fresh } = await q;
       if (!fresh?.length) return;
@@ -253,6 +308,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
     const body = text.trim();
     const pendingFiles = files;
     if ((!body && !pendingFiles.length) || busy) return;
+    if (guardSend()) return;
     haptic(8);
     setBusy(true); setError(null);
     const replyId = replyTo?.id;
@@ -262,18 +318,31 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
       const tmp: ChatMessage = { id: `tmp-${crypto.randomUUID()}`, author_id: me.id, kind: "text", body, storage_path: null, duration_ms: null, reply_to: replyId ?? null, edited_at: null, deleted_at: null, created_at: new Date().toISOString(), tmp: true };
       setMessages((c) => [...c, tmp]);
       playSfx("sent");
-      const r = await sendTextMessageAction({ body, replyTo: replyId });
-      if (r.ok) upsert(r.data as ChatMessage); else { setMessages((c) => c.filter((x) => x.id !== tmp.id)); setError(r.error); }
+      let cipher: string | null = null;
+      try { if (e2ee.sendMode === "encrypted") cipher = await e2ee.encryptMessage("text", body); } catch { setMessages((c) => c.filter((x) => x.id !== tmp.id)); setError("generic"); setBusy(false); return; }
+      const r = await sendTextMessageAction({ body: cipher ?? body, replyTo: replyId, enc: !!cipher });
+      if (r.ok) {
+        const row = r.data as ChatMessage;
+        if (cipher) { setPlain((p) => ({ ...p, [`${row.id}:`]: body })); setMessages((c) => c.filter((x) => x.id !== tmp.id)); }
+        upsert(row);
+      } else { setMessages((c) => c.filter((x) => x.id !== tmp.id)); setError(r.error); }
     }
     const supabase = createClient();
     for (const f of pendingFiles) {
       try {
         const img = await prepareImage(f);
-        const path = `${coupleId}/chat/${crypto.randomUUID()}.${img.ext}`;
-        const up = await supabase.storage.from("couple-media").upload(path, img.blob, { contentType: img.type });
+        const sealed = e2ee.sendMode === "encrypted" ? await e2ee.encryptBlob(img.blob) : null;
+        const path = `${coupleId}/chat/${crypto.randomUUID()}.${sealed ? "bin" : img.ext}`;
+        const up = await supabase.storage.from("couple-media").upload(path, sealed ? sealed.cipher : img.blob, { contentType: sealed ? "application/octet-stream" : img.type });
         if (up.error) throw up.error;
-        const r = await sendMediaMessageAction({ kind: "image", path });
-        if (r.ok) { upsert(r.data as ChatMessage); playSfx("sent"); } else throw new Error(r.error);
+        const meta = sealed ? JSON.stringify({ k: sealed.key, t: img.type }) : null;
+        const cipher = meta ? await e2ee.encryptMessage("image", meta) : undefined;
+        const r = await sendMediaMessageAction({ kind: "image", path, cipher });
+        if (r.ok) {
+          const row = r.data as ChatMessage;
+          if (meta) { setPlain((p) => ({ ...p, [`${row.id}:`]: meta })); setBlobUrls((b) => ({ ...b, [path]: URL.createObjectURL(img.blob) })); }
+          upsert(row); playSfx("sent");
+        } else throw new Error(r.error);
       } catch { setError("generic"); }
     }
     setBusy(false);
@@ -281,31 +350,55 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
 
   const sendSticker = async (id: StickerId) => {
     setStickersOpen(false);
+    if (guardSend()) return;
     haptic(8);
     const replyId = replyTo?.id;
     setReplyTo(null);
     const tmp: ChatMessage = { id: `tmp-${crypto.randomUUID()}`, author_id: me.id, kind: "sticker", body: id, storage_path: null, duration_ms: null, reply_to: replyId ?? null, edited_at: null, deleted_at: null, created_at: new Date().toISOString(), tmp: true };
     setMessages((c) => [...c, tmp]);
     playSfx("sent");
-    const r = await sendStickerMessageAction({ stickerId: id, replyTo: replyId });
-    if (r.ok) upsert(r.data as ChatMessage); else { setMessages((c) => c.filter((x) => x.id !== tmp.id)); setError(r.error); }
+    let cipher: string | undefined;
+    try { if (e2ee.sendMode === "encrypted") cipher = await e2ee.encryptMessage("sticker", id); } catch { setMessages((c) => c.filter((x) => x.id !== tmp.id)); setError("generic"); return; }
+    const r = await sendStickerMessageAction(cipher ? { cipher, replyTo: replyId } : { stickerId: id, replyTo: replyId });
+    if (r.ok) {
+      const row = r.data as ChatMessage;
+      if (cipher) { setPlain((p) => ({ ...p, [`${row.id}:`]: id })); setMessages((c) => c.filter((x) => x.id !== tmp.id)); }
+      upsert(row);
+    } else { setMessages((c) => c.filter((x) => x.id !== tmp.id)); setError(r.error); }
   };
 
   const sendVoice = async () => {
     if (!recorder.blob) return;
     if (recorder.blob.blob.size < 200) { recorder.reset(); return; }
+    if (guardSend()) return;
+    haptic(8);
     setBusy(true); setError(null);
     try {
       const ext = recorder.blob.mime.includes("mp4") ? "m4a" : recorder.blob.mime.includes("aac") ? "aac" : "webm";
-      const path = `${coupleId}/chat/${crypto.randomUUID()}.${ext}`;
+      const mime = recorder.blob.mime.split(";")[0];
+      const sealed = e2ee.sendMode === "encrypted" ? await e2ee.encryptBlob(recorder.blob.blob) : null;
+      const path = `${coupleId}/chat/${crypto.randomUUID()}.${sealed ? "bin" : ext}`;
       const supabase = createClient();
-      const up = await supabase.storage.from("couple-media").upload(path, recorder.blob.blob, { contentType: recorder.blob.mime.split(";")[0] });
+      const up = await supabase.storage.from("couple-media").upload(path, sealed ? sealed.cipher : recorder.blob.blob, { contentType: sealed ? "application/octet-stream" : mime });
       if (up.error) throw up.error;
-      const r = await sendMediaMessageAction({ kind: "audio", path, durationMs: recorder.blob.ms });
-      if (r.ok) { upsert(r.data as ChatMessage); playSfx("sent"); } else throw new Error(r.error);
+      const meta = sealed ? JSON.stringify({ k: sealed.key, t: mime }) : null;
+      const cipher = meta ? await e2ee.encryptMessage("audio", meta) : undefined;
+      const r = await sendMediaMessageAction({ kind: "audio", path, durationMs: recorder.blob.ms, cipher });
+      if (r.ok) {
+        const row = r.data as ChatMessage;
+        if (meta) { setPlain((p) => ({ ...p, [`${row.id}:`]: meta })); setBlobUrls((b) => ({ ...b, [path]: URL.createObjectURL(recorder.blob!.blob) })); }
+        upsert(row); playSfx("sent");
+      } else throw new Error(r.error);
       recorder.reset();
     } catch { setError("generic"); }
     setBusy(false);
+  };
+
+  /** True when sending must wait: encryption needs unlocking / enabling, or the other person's key needs confirming. */
+  const guardSend = () => {
+    if (e2ee.sendMode !== "blocked") return false;
+    if (!e2ee.partnerChanged) e2ee.openDialog(e2ee.phase === "locked" ? "restore" : "setup");
+    return true;
   };
 
   const openMenuFor = (m: ChatMessage, el: HTMLElement) => {
@@ -329,8 +422,8 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
     setMenu(null);
     if (!m) return;
     if (a === "reply") setReplyTo(m);
-    else if (a === "copy") { if (m.body) navigator.clipboard?.writeText(m.body).catch(() => {}); }
-    else if (a === "edit") { if (m.author_id === me.id) setEditing({ id: m.id, body: m.body ?? "" }); }
+    else if (a === "copy") { const b = bodyOf(m); if (b) navigator.clipboard?.writeText(b).catch(() => {}); }
+    else if (a === "edit") { if (m.author_id === me.id) setEditing({ id: m.id, body: bodyOf(m) ?? "" }); }
     else if (a === "delete") { if (m.author_id === me.id) setConfirmDelete(m.id); }
   };
 
@@ -413,7 +506,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
                         <button type="button" onClick={() => document.getElementById(`msg-${quoted.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
                           className="block w-full text-left rounded-xl px-2.5 py-1.5 mb-1.5 border-l-2 border-accent bg-black/5 text-xs">
                           <span className="block font-medium">{quoted.author_id === me.id ? t("common.you") : other.name}</span>
-                          <span className="block truncate opacity-80">{previewFor(quoted, t)}</span>
+                          <span className="block truncate opacity-80">{previewFor(quoted, t, bodyOf(quoted))}</span>
                         </button>
                       )}
                       {m.deleted_at ? (
@@ -422,23 +515,37 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
                         <div className="grid gap-2 min-w-52">
                           <textarea className="field !bg-transparent !border-white/20" value={editing.body} maxLength={4000} onChange={(e) => setEditing({ id: m.id, body: e.target.value })} />
                           <div className="flex gap-2">
-                            <button className="btn btn-primary !min-h-9 !px-3 text-xs" onClick={async () => { const r = await editMessageAction({ id: m.id, body: editing.body }); if (r.ok) { upsert({ ...m, body: editing.body, edited_at: new Date().toISOString() }); setEditing(null); } }}>{t("common.save")}</button>
+                            <button className="btn btn-primary !min-h-9 !px-3 text-xs" onClick={async () => {
+                              const editedAt = new Date().toISOString();
+                              let cipher: string | null = null;
+                              try { if (m.enc === 1) cipher = await e2ee.encryptMessage("text", editing.body); } catch { setError("generic"); return; }
+                              const r = await editMessageAction({ id: m.id, body: cipher ?? editing.body, enc: m.enc === 1 });
+                              if (r.ok) {
+                                if (cipher) setPlain((p) => ({ ...p, [`${m.id}:${editedAt}`]: editing.body }));
+                                upsert({ ...m, body: cipher ?? editing.body, edited_at: editedAt });
+                                setEditing(null);
+                              } else setError(r.error);
+                            }}>{t("common.save")}</button>
                             <button className="btn !min-h-9 !px-3 text-xs" onClick={() => setEditing(null)}>{t("common.cancel")}</button>
                           </div>
                         </div>
                       ) : m.kind === "text" ? (
-                        <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                        m.enc === 1 && bodyOf(m) === null ? (
+                          <p className="inline-flex items-center gap-1.5 text-sm italic opacity-70"><AppIcon name="lock" size={13} /> {t(undecryptable(m) ? "e2ee.cannotDecrypt" : "e2ee.notDecrypted")}</p>
+                        ) : (
+                          <p className="whitespace-pre-wrap break-words">{bodyOf(m)}</p>
+                        )
                       ) : m.kind === "sticker" ? (
-                        isStickerId(m.body ?? "") ? <Sticker id={m.body as StickerId} size={84} /> : null
+                        isStickerId(bodyOf(m) ?? "") ? <Sticker id={bodyOf(m) as StickerId} size={84} /> : null
                       ) : photoCard ? (
                         <div className={`grid gap-1.5 w-[min(72vw,19rem)] ${group.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
                           {group.slice(0, 4).map((g, gi) => {
                             const more = gi === 3 && group.length > 4 ? group.length - 4 : 0;
                             return (
                               <PressTarget key={g.id} onLongPress={(el) => openMenuFor(g, el)} className={`relative overflow-hidden rounded-2xl bg-surface2 ${group.length === 1 ? "" : "aspect-square"} ${menu?.id === g.id ? "ring-2 ring-accent/60" : ""}`}>
-                                {urls[g.storage_path!] ? (
+                                {urlFor(g) ? (
                                   <button type="button" className="block size-full" onClick={() => setViewer(g.id)} aria-label={t("messaging.aPhoto")}>
-                                    <img src={urls[g.storage_path!]} alt={t("messaging.aPhoto")} loading="lazy" draggable={false}
+                                    <img src={urlFor(g)} alt={t("messaging.aPhoto")} loading="lazy" draggable={false}
                                       className={`w-full object-cover ${group.length === 1 ? "max-h-96 min-h-40" : "size-full"}`} />
                                     {more > 0 && <span className="absolute inset-0 grid place-items-center bg-black/45 text-white text-2xl font-display">+{more}</span>}
                                   </button>
@@ -450,7 +557,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
                       ) : m.kind === "image" ? (
                         <div className="w-40 aspect-square rounded-2xl bg-surface animate-pulse" />
                       ) : m.storage_path ? (
-                        <AudioPlayer url={urls[m.storage_path]} durationMs={m.duration_ms} mine={mine} />
+                        <AudioPlayer url={urlFor(m)} durationMs={m.duration_ms} mine={mine} />
                       ) : null}
                       {!m.deleted_at && !editing && (
                         <div className={`flex items-center gap-1 mt-1 text-[0.62rem] opacity-70 ${mine ? "justify-end" : ""}`}>
@@ -472,7 +579,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
           </div>
         ))}
         {viewerIdx >= 0 && (
-          <PhotoViewer urls={photoItems.map((m) => urls[m.storage_path!])} index={viewerIdx} onIndex={(i) => setViewer(photoItems[i].id)} onClose={() => setViewer(null)} />
+          <PhotoViewer urls={photoUrls} index={viewerIdx} onIndex={(i) => setViewer(photoItems[i].id)} onClose={() => setViewer(null)} />
         )}
         {typing && (
           <p className="text-sm text-muted italic px-2 inline-flex items-center gap-2" role="status" aria-live="polite">
@@ -490,10 +597,25 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
 
       <div className="relative z-20 shrink-0 border-t border-line px-2.5 pt-2 pb-[max(0.5rem,var(--sab,env(safe-area-inset-bottom)))] grid grid-cols-[minmax(0,1fr)] gap-1.5" style={{ background: "color-mix(in srgb, var(--surface) 92%, transparent)", backdropFilter: "blur(14px)" }}>
         <ErrorNote code={error} />
+        {(e2ee.sendMode === "blocked" || e2ee.partnerChanged) && (
+          <div className="rounded-xl bg-surface2 px-3 py-2 text-sm grid gap-2" role="status">
+            <span className="flex items-start gap-2 min-w-0">
+              <AppIcon name="lock" size={15} className="text-accent shrink-0 mt-0.5" />
+              <span className="min-w-0">
+                {t(e2ee.partnerChanged ? "e2ee.bannerChanged" : e2ee.phase === "locked" ? "e2ee.bannerLocked" : "e2ee.bannerNeedsSetup", { name: other.name })}
+              </span>
+            </span>
+            {e2ee.partnerChanged && e2ee.safety && <code className="block text-xs tracking-wider tabular-nums break-words">{e2ee.safety}</code>}
+            <button type="button" className="btn btn-primary !min-h-9 !px-3 text-xs justify-self-start"
+              onClick={() => (e2ee.partnerChanged ? e2ee.confirmPartnerKey() : e2ee.openDialog(e2ee.phase === "locked" ? "restore" : "setup"))}>
+              {t(e2ee.partnerChanged ? "e2ee.confirmKey" : e2ee.phase === "locked" ? "e2ee.unlock" : "e2ee.enable")}
+            </button>
+          </div>
+        )}
         {replyTo && (
           <div className="flex items-center gap-2 min-w-0 rounded-xl bg-surface2 px-3 py-2 text-sm">
             <AppIcon name="replyArrow" size={14} className="text-muted shrink-0" />
-            <span className="flex-1 min-w-0 truncate">{previewFor(replyTo, t)}</span>
+            <span className="flex-1 min-w-0 truncate">{previewFor(replyTo, t, bodyOf(replyTo))}</span>
             <button type="button" className="icon-btn !size-7 shrink-0" aria-label={t("common.cancel")} onClick={() => setReplyTo(null)}><AppIcon name="close" size={13} /></button>
           </div>
         )}

@@ -45,7 +45,7 @@ function DropMenu({ trigger, label, items, className }: { trigger: React.ReactNo
 }
 
 /** The conversation header's two menus: "Call" (audio / video) and the shared media + call history. */
-export function ChatHeaderMenus({ myId, name, avatar, tone, photos }: { myId: string; name: string; avatar: string | null; tone: "rose" | "gold"; photos: string[] }) {
+export function ChatHeaderMenus({ myId, name, avatar, tone }: { myId: string; name: string; avatar: string | null; tone: "rose" | "gold" }) {
   const { t } = useI18n();
   const { startCall, inCall } = useCall();
   const [sheet, setSheet] = useState<"media" | "calls" | null>(null);
@@ -70,7 +70,7 @@ export function ChatHeaderMenus({ myId, name, avatar, tone, photos }: { myId: st
           { icon: "clock", label: t("call.history"), onSelect: () => setSheet("calls") },
         ]}
       />
-      {sheet === "media" && <ChatInfoSheet name={name} avatar={avatar} tone={tone} photos={photos} onClose={() => setSheet(null)} />}
+      {sheet === "media" && <ChatInfoSheet name={name} avatar={avatar} tone={tone} onClose={() => setSheet(null)} />}
       {sheet === "calls" && <CallHistorySheet myId={myId} onClose={() => setSheet(null)} />}
     </>
   );
