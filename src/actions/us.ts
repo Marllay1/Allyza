@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { fail, ok, rateLimit, uuid } from "@/lib/action-utils";
 import { LITTLE_KINDS, MEDIA_CATEGORIES, REACTION_EMOJIS } from "@/lib/constants";
+import { stickerFromReaction } from "@/lib/stickers";
 import { pingPartner } from "@/lib/push";
 import { getAuthUser } from "@/lib/supabase/request";
 
@@ -127,8 +128,12 @@ export async function deleteMediaAction(id: string) {
 
 /* ───────── reactions ───────── */
 
+/** One reaction: the quick set, a sticker (as "s:<n>"), or any pictographic emoji (with variation selectors / skin tones / joiners), at most 8 code points. */
+const reactionEmoji = z.string().min(1).max(16)
+  .refine((s) => [...s].length <= 8 && (/^\p{Extended_Pictographic}[\p{Extended_Pictographic}\uFE0F\u200D\p{Emoji_Modifier}]*$/u.test(s) || (REACTION_EMOJIS as readonly string[]).includes(s) || stickerFromReaction(s) !== null));
+
 export async function toggleReactionAction(input: { targetType: "journal" | "media" | "little" | "story" | "song" | "joke" | "message"; targetId: string; emoji: string }) {
-  const p = z.object({ targetType: z.enum(["journal", "media", "little", "story", "song", "joke", "message"]), targetId: uuid, emoji: z.enum(REACTION_EMOJIS) }).safeParse(input);
+  const p = z.object({ targetType: z.enum(["journal", "media", "little", "story", "song", "joke", "message"]), targetId: uuid, emoji: reactionEmoji }).safeParse(input);
   if (!p.success) return fail("invalid");
   const c = await ctx();
   if (!c) return fail("auth");

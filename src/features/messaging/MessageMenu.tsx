@@ -43,15 +43,15 @@ export function PressTarget({ onLongPress, disabled, className, style, children 
 }
 
 const REACT_H = 52, GAP = 8, ROW_H = 46, PAD = 6, EDGE = 8, TOP_SAFE = 64;
-const REACT_W = REACTION_EMOJIS.length * 44 + 16, MENU_W = 208;
+const REACT_W = (REACTION_EMOJIS.length + 1) * 44 + 16, MENU_W = 208;
 
 /**
  * Reactions above, actions below, both kept inside the visible screen whatever the message's
  * position or size: the bubble itself stays put (highlighted) and the panels slide to fit.
  */
-export function MessageMenu({ anchor, mine, actions, myReactions, onReact, onAction, onClose }: {
+export function MessageMenu({ anchor, mine, actions, myReactions, onReact, onMore, onAction, onClose }: {
   anchor: Anchor; mine: boolean; actions: MenuAction[]; myReactions: Set<string>;
-  onReact: (emoji: string) => void; onAction: (a: MenuAction) => void; onClose: () => void;
+  onReact: (emoji: string) => void; onMore: () => void; onAction: (a: MenuAction) => void; onClose: () => void;
 }) {
   const { t } = useI18n();
   useEffect(() => {
@@ -93,6 +93,8 @@ export function MessageMenu({ anchor, mine, actions, myReactions, onReact, onAct
               {e}
             </button>
           ))}
+          <button type="button" aria-label={t("couple.react")} onClick={onMore}
+            className="size-10 grid place-items-center rounded-full bg-surface2 text-muted transition active:scale-90 hover:text-ink"><AppIcon name="plus" size={18} /></button>
         </div>
         <div className="absolute grid rounded-3xl p-1.5 pop-in border border-line shadow-lg select-none" style={{ top: menuY, left: clampX(MENU_W), width: MENU_W, background: "var(--surface)" }} onClick={(e) => e.stopPropagation()}>
           {actions.map((a) => (

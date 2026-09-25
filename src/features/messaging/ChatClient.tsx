@@ -9,7 +9,7 @@ import { ErrorNote } from "@/components/Feedback";
 import { ReactionBar } from "@/components/ReactionBar";
 import { MessageMenu, PressTarget, type Anchor, type MenuAction } from "@/features/messaging/MessageMenu";
 import { Sticker } from "@/components/Sticker";
-import { STICKER_IDS, isStickerId, type StickerId } from "@/lib/stickers";
+import { STICKER_IDS, isStickerId, stickerReactionCode, type StickerId } from "@/lib/stickers";
 import { formatDay } from "@/lib/format";
 import { isAcceptedImage, prepareImage } from "@/lib/image";
 import { useI18n } from "@/lib/i18n/provider";
@@ -81,12 +81,12 @@ function AudioPlayer({ url, durationMs, mine }: { url: string | undefined; durat
 
   return (
     <div className="flex items-center gap-2.5 min-w-[11rem]">
-      <button type="button" onClick={toggle} className={`icon-btn shrink-0 ${mine ? "bg-black/10" : "bg-accent/15"}`} aria-label={playing ? "pause" : "play"}>
+      <button type="button" onClick={toggle} className={`icon-btn shrink-0 ${mine ? "bg-white/15" : "bg-accent/15"}`} aria-label={playing ? "pause" : "play"}>
         <AppIcon name={playing ? "pause" : "play"} size={16} />
       </button>
       <div className="flex-1 h-7 flex items-center gap-[2px]">
         {(peaks ?? Array.from({ length: 32 }, () => 0.15)).map((p, i) => (
-          <span key={i} className="flex-1 rounded-full" style={{ height: `${Math.round(p * 100)}%`, minHeight: 3, background: i / 32 <= progress ? (mine ? "var(--accent-ink)" : "var(--accent)") : mine ? "color-mix(in srgb, var(--accent-ink) 30%, transparent)" : "var(--line)" }} />
+          <span key={i} className="flex-1 rounded-full" style={{ height: `${Math.round(p * 100)}%`, minHeight: 3, background: i / 32 <= progress ? (mine ? "#fff" : "var(--accent)") : mine ? "rgb(255 255 255 / .35)" : "var(--line)" }} />
         ))}
       </div>
       <span className="text-[0.68rem] tabular-nums opacity-80 shrink-0">{fmtDur(durationMs ?? 0)}</span>
@@ -123,6 +123,9 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
   const [showJump, setShowJump] = useState(false);
   const [stickersOpen, setStickersOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  /** The message a reaction is being chosen for, from any emoji (the "+" next to the quick reactions). */
+  const [reactFor, setReactFor] = useState<string | null>(null);
+  const [reactTab, setReactTab] = useState<"stickers" | "emojis">("stickers");
   const [viewer, setViewer] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -513,10 +516,10 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
                       <div className="w-full text-center my-2"><span className="chip !cursor-default !text-[0.68rem] !min-h-7 !px-3">{t("messaging.newMessages")}</span></div>
                     )}
                     <PressTarget disabled={!!editing || !!m.tmp || !!m.deleted_at || photoCard} onLongPress={(el) => openMenuFor(m, el)} style={{ userSelect: "none" }}
-                      className={`max-w-full ${(m.kind === "sticker" && !m.deleted_at) || photoCard || (m.kind === "text" && !m.deleted_at && editing?.id !== m.id && isEmojiOnly(bodyOf(m))) ? "px-1" : `rounded-3xl px-4 py-2.5 border ${mine ? "bg-accent text-accent-ink border-transparent rounded-br-md shadow-sm" : "bg-surface2 border-line rounded-bl-md"} ${m.deleted_at ? "italic opacity-70" : ""}`} ${menu?.id === m.id ? "ring-2 ring-accent/60" : ""}`}>
+                      className={`max-w-full ${(m.kind === "sticker" && !m.deleted_at) || photoCard || (m.kind === "text" && !m.deleted_at && editing?.id !== m.id && isEmojiOnly(bodyOf(m))) ? "px-1" : `rounded-3xl px-4 py-2.5 border ${mine ? "bg-accent/18 border-accent/30 rounded-br-md" : "bg-surface2 border-line rounded-bl-md"} ${m.deleted_at ? "italic opacity-70" : ""}`} ${menu?.id === m.id ? "ring-2 ring-accent/60" : ""}`}>
                       {quoted && !m.deleted_at && (
                         <button type="button" onClick={() => document.getElementById(`msg-${quoted.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
-                          className={`block w-full text-left rounded-xl px-2.5 py-1.5 mb-1.5 border-l-2 text-xs ${mine ? "border-accent-ink/50 bg-black/10" : "border-accent bg-black/5"}`}>
+                          className="block w-full text-left rounded-xl px-2.5 py-1.5 mb-1.5 border-l-2 border-accent bg-black/5 text-xs">
                           <span className="block font-medium">{quoted.author_id === me.id ? t("common.you") : other.name}</span>
                           <span className="block truncate opacity-80">{previewFor(quoted, t, bodyOf(quoted))}</span>
                         </button>
@@ -525,7 +528,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
                         <span className="inline-flex items-center gap-1.5 text-sm"><AppIcon name="trash" size={13} /> {t("messaging.deleted")}</span>
                       ) : editing?.id === m.id ? (
                         <div className="grid gap-2 min-w-52">
-                          <textarea className={`field !bg-transparent ${mine ? "!border-black/25 !text-accent-ink" : "!border-white/20"}`} value={editing.body} maxLength={4000} onChange={(e) => setEditing({ id: m.id, body: e.target.value })} />
+                          <textarea className="field !bg-transparent !border-white/20" value={editing.body} maxLength={4000} onChange={(e) => setEditing({ id: m.id, body: e.target.value })} />
                           <div className="flex gap-2">
                             <button className="btn btn-primary !min-h-9 !px-3 text-xs" onClick={async () => {
                               const editedAt = new Date().toISOString();
@@ -575,13 +578,13 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
                         <div className={`flex items-center gap-1 mt-1 text-[0.62rem] opacity-70 ${mine ? "justify-end" : ""}`}>
                           {m.edited_at && <span>{t("journal.edited")}</span>}
                           <span>{time(m.created_at)}</span>
-                          {mine && last.id === lastMineId && <AppIcon name={read ? "readAll" : "check"} size={13} className={read ? "text-accent-ink !opacity-100" : ""} />}
+                          {mine && last.id === lastMineId && <AppIcon name={read ? "readAll" : "check"} size={13} className={read ? "text-accent" : ""} />}
                         </div>
                       )}
                     </PressTarget>
                     {!m.deleted_at && !m.tmp && (
                       <>
-                        {group.map((g) => <ReactionBar key={g.id} targetType="message" targetId={g.id} reactions={reactions} myId={me.id} toggle={toggleReaction} showAdd={false} />)}
+                        {group.map((g) => <ReactionBar key={g.id} targetType="message" targetId={g.id} reactions={reactions} myId={me.id} toggle={toggleReaction} showAdd={false} onMore={() => setReactFor(g.id)} />)}
                       </>
                     )}
                   </div>
@@ -704,8 +707,34 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
           anchor={menu.anchor} mine={menuMsg.author_id === me.id} actions={menuActions}
           myReactions={new Set(reactions.filter((r) => r.target_id === menuMsg.id && r.author_id === me.id).map((r) => r.emoji))}
           onReact={(emoji) => { toggleReaction("message", menuMsg.id, emoji); setMenu(null); }}
+          onMore={() => { setReactFor(menuMsg.id); setMenu(null); }}
           onAction={runAction} onClose={() => setMenu(null)}
         />
+      )}
+
+      {reactFor && (
+        <Portal>
+          <div role="dialog" aria-modal="true" aria-label={t("couple.react")} className="fixed inset-0 z-50 flex items-end justify-center bg-black/50" onClick={() => setReactFor(null)}>
+            <div className="card w-full max-w-md rounded-b-none p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pop-in" onClick={(e) => e.stopPropagation()}>
+              <div className="flex gap-1.5 mb-3" role="tablist">
+                {(["stickers", "emojis"] as const).map((tab) => (
+                  <button key={tab} type="button" role="tab" aria-selected={reactTab === tab} onClick={() => setReactTab(tab)}
+                    className={`chip !min-h-9 ${reactTab === tab ? "!bg-accent/20 !text-ink" : ""}`}>{t(`messaging.${tab}`)}</button>
+                ))}
+              </div>
+              {reactTab === "stickers" ? (
+                <div className="grid grid-cols-5 gap-1.5 max-h-56 overflow-y-auto overscroll-contain" role="listbox" aria-label={t("messaging.stickers")}>
+                  {STICKER_IDS.map((id) => (
+                    <button key={id} type="button" aria-label={t(`stickers.${id}`)} onClick={() => { toggleReaction("message", reactFor, stickerReactionCode(id)); setReactFor(null); }}
+                      className="rounded-xl p-1.5 hover:bg-surface2 active:scale-95 transition"><Sticker id={id} size={48} /></button>
+                  ))}
+                </div>
+              ) : (
+                <EmojiPicker onPick={(emoji) => { toggleReaction("message", reactFor, emoji); setReactFor(null); }} />
+              )}
+            </div>
+          </div>
+        </Portal>
       )}
 
       {confirmDelete && (
