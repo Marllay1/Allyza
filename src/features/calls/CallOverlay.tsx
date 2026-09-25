@@ -24,6 +24,9 @@ export type OverlayProps = {
   facingUser: boolean;
   canSwitchOutput: boolean;
   speakerOn: boolean;
+  canRetry: boolean;
+  onRedial: () => void;
+  onCloseEnded: () => void;
   minimized: boolean;
   onMinimize: () => void;
   onExpand: () => void;
@@ -307,7 +310,14 @@ export function CallOverlay(p: OverlayProps) {
               <div className="grid justify-items-center gap-2"><RoundButton big label={t("call.decline")} danger onClick={p.onDecline}><AppIcon name="callEnd" size={28} /></RoundButton><span className="text-xs opacity-80">{t("call.decline")}</span></div>
               <div className="grid justify-items-center gap-2"><RoundButton big label={t("call.accept")} good onClick={p.onAccept}><AppIcon name={video ? "video" : "call"} size={28} /></RoundButton><span className="text-xs opacity-80">{t("call.accept")}</span></div>
             </div>
-          ) : p.phase === "ended" ? null : (
+          ) : p.phase === "ended" ? (
+            p.canRetry ? (
+              <div className="flex items-center gap-20">
+                <div className="grid justify-items-center gap-2"><RoundButton big label={t("common.cancel")} onClick={p.onCloseEnded}><AppIcon name="close" size={26} /></RoundButton><span className="text-xs opacity-80">{t("common.cancel")}</span></div>
+                <div className="grid justify-items-center gap-2"><RoundButton big label={t("call.redial")} good onClick={p.onRedial}><AppIcon name={video ? "video" : "call"} size={28} /></RoundButton><span className="text-xs opacity-80">{t("call.redial")}</span></div>
+              </div>
+            ) : null
+          ) : (
             <>
               <div className="flex items-center gap-3 rounded-full bg-black/25 px-3 py-2.5 backdrop-blur-2xl border border-white/10">
                 <RoundButton label={t("call.mute")} active={p.muted} onClick={p.onToggleMute}><AppIcon name={p.muted ? "micOff" : "mic"} size={22} /></RoundButton>

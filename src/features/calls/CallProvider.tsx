@@ -43,6 +43,8 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
   const [speakerOn, setSpeakerOn] = useState(false);
   // The call and its screen are separate: the screen can shrink to a floating palette while the call carries on.
   const [minimized, setMinimized] = useState(false);
+  // After an unanswered call the ended screen offers "call back / cancel" instead of vanishing on its own.
+  const [canRetry, setCanRetry] = useState(false);
   const [remoteCameraOff, setRemoteCameraOff] = useState(false);
   const [remoteMuted, setRemoteMuted] = useState(false);
   const [facingUser, setFacingUser] = useState(true);
@@ -70,7 +72,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     void chan.current?.send({ type: "broadcast", event: "signal", payload: { callId: c.id, from: myId, type, kind: c.kind, ...extra } satisfies Signal });
   }, [myId]);
 
-  const cleanup = useCallback((message: string | null, sfx?: Sfx) => {
+  const cleanup = useCallback((message: string | null, sfx?: Sfx, offerRetry = false) => {
     const c = live.current;
     if (c && sfx) playSfx(sfx);
     c?.timers.forEach(clearTimeout);
@@ -89,9 +91,9 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     setRemoteCameraOff(false); setRemoteMuted(false); setFacingUser(true);
     if (dismiss.current) clearTimeout(dismiss.current);
     if (message) {
-      setNotice(message); setPhase("ended");
-      dismiss.current = setTimeout(() => { setPhase("idle"); setNotice(null); setMinimized(false); }, 3200);
-    } else { setNotice(null); setPhase("idle"); setMinimized(false); }
+      setNotice(message); setPhase("ended"); setCanRetry(offerRetry);
+      dismiss.current = setTimeout(() => { setPhase("idle"); setNotice(null); setMinimized(false); setCanRetry(false); }, offerRetry ? 20_000 : 3200);
+    } else { setNotice(null); setPhase("idle"); setMinimized(false); setCanRetry(false); }
   }, []);
 
   const getMedia = useCallback((k: Kind, face: "user" | "environment" = "user") =>
@@ -182,7 +184,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     const status = reason === "failed" ? "failed" : reason === "missed" ? "missed" : c.role === "caller" && !c.answered ? "cancelled" : "ended";
     send("hangup");
     void updateCallStatusAction({ id: c.id, status });
-    cleanup(reason === "failed" ? t("call.failed") : reason === "missed" ? t(c.acked ? "call.noAnswer" : "call.unreachable", { name: otherName }) : null, reason === "hangup" ? "hangup" : "dropped");
+    cleanup(reason === "failed" ? t("call.failed") : reason === "missed" ? t(c.acked ? "call.noAnswer" : "call.unreachable", { name: otherName }) : null, reason === "hangup" ? "hangup" : "dropped", reason === "missed");
   }, [cleanup, otherName, send, t]);
 
   useEffect(() => { endRef.current = endCall; }, [endCall]);
@@ -225,7 +227,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     if (live.current || (phase !== "idle" && phase !== "ended")) return;
     if (dismiss.current) clearTimeout(dismiss.current);
     if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === "undefined") { cleanup(t("call.unsupported")); return; }
-    setKind(k); setPhase("outgoing"); setNotice(null); setMinimized(false);
+    setKind(k); setPhase("outgoing"); setNotice(null); setMinimized(false); setCanRetry(false);
     let stream: MediaStream;
     try { stream = await getMedia(k); } catch { cleanup(t("call.permission")); return; }
     const created = await startCallAction({ kind: k });
@@ -301,7 +303,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     live.current = { id: row.id, kind: row.kind, role: "callee", answered: false, acked: false, offerSdp: null, lastOffer: null, sentIce: [], remoteIce: [], connectedAt: null, iceRestarts: 0, timers: [], intervals: [] };
     setKind(row.kind); setNotice(null); setPhase("incoming"); setMinimized(false);
     send("ringing");
-    live.current.timers.push(setTimeout(() => { if (live.current?.id === row.id && !live.current.answered) cleanup(t("call.missed", { name: otherName }), "dropped"); }, STALE_RING_MS));
+    live.current.timers.push(setTimeout(() => { if (live.current?.id === row.id && !live.current.answered) cleanup(t("call.missed", { name: otherName }), "dropped", true); }, STALE_RING_MS));
   }, [cleanup, myId, otherName, send, t]);
 
   useEffect(() => {
@@ -356,10 +358,10 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
           if (m.cameraOff !== undefined) setRemoteCameraOff(m.cameraOff);
           break;
         case "reject":
-          if (c.role === "caller") cleanup(t("call.declined", { name: otherName }), "hangup");
+          if (c.role === "caller") cleanup(t("call.declined", { name: otherName }), "hangup", true);
           break;
         case "hangup":
-          cleanup(c.role === "callee" && !c.answered ? t("call.missed", { name: otherName }) : t("call.ended"), c.answered || c.role === "caller" ? "hangup" : "dropped");
+          cleanup(c.role === "callee" && !c.answered ? t("call.missed", { name: otherName }) : t("call.ended"), c.answered || c.role === "caller" ? "hangup" : "dropped", c.role === "callee" && !c.answered);
           break;
       }
     };
@@ -376,8 +378,8 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
         const row = p.new as CallRow;
         const c = live.current;
         if (!c || c.id !== row.id || !closedStatuses.includes(row.status)) return;
-        if (c.role === "callee" && !c.answered) cleanup(t("call.missed", { name: otherName }), "dropped");
-        else if (c.role === "caller" && row.status === "rejected") cleanup(t("call.declined", { name: otherName }), "hangup");
+        if (c.role === "callee" && !c.answered) cleanup(t("call.missed", { name: otherName }), "dropped", true);
+        else if (c.role === "caller" && row.status === "rejected") cleanup(t("call.declined", { name: otherName }), "hangup", true);
         else if (row.status === "ended" || row.status === "failed") cleanup(t("call.ended"), "hangup");
       })
       .subscribe();
@@ -401,6 +403,11 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coupleId, myId, other?.id]);
+
+  const closeEnded = () => {
+    if (dismiss.current) clearTimeout(dismiss.current);
+    setPhase("idle"); setNotice(null); setMinimized(false); setCanRetry(false);
+  };
 
   const toggleMute = () => {
     const tr = local.current?.getAudioTracks()[0];
@@ -454,7 +461,7 @@ export function CallProvider({ coupleId, myId, other, children }: { coupleId: st
       {other && phase !== "idle" && (
         <CallOverlay
           phase={phase} kind={kind} other={other} ringing={ringing} reconnecting={reconnecting} elapsed={elapsed} notice={notice}
-          muted={muted} cameraOff={cameraOff} minimized={minimized} onMinimize={() => setMinimized(true)} onExpand={() => setMinimized(false)} speakerOn={speakerOn} canSwitchOutput={outputs > 1 && typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype}
+          muted={muted} cameraOff={cameraOff} canRetry={canRetry} onRedial={() => void startCall(kind)} onCloseEnded={closeEnded} minimized={minimized} onMinimize={() => setMinimized(true)} onExpand={() => setMinimized(false)} speakerOn={speakerOn} canSwitchOutput={outputs > 1 && typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype}
           localStream={localStream} remoteStream={remoteStream} remoteCameraOff={remoteCameraOff} remoteMuted={remoteMuted} facingUser={facingUser}
           onAccept={() => void accept()} onDecline={decline} onHangup={() => endCall("hangup")}
           onToggleMute={toggleMute} onToggleCamera={toggleCamera} onFlipCamera={() => void flipCamera()} onCycleOutput={() => void cycleOutput()}

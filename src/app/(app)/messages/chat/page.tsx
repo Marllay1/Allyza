@@ -3,6 +3,7 @@ import { ChatClient, type ChatMessage } from "@/features/messaging/ChatClient";
 import { ChatHeader } from "@/features/messaging/ChatHeader";
 import { ChatShell } from "@/features/messaging/ChatShell";
 import { CallButtons } from "@/features/messaging/CallSheet";
+import { CallHistoryButton } from "@/features/messaging/CallHistory";
 import { ChatInfoButton } from "@/features/messaging/ChatInfo";
 import { getT } from "@/lib/i18n/server";
 import { getPartner } from "@/lib/nickname";
@@ -46,6 +47,7 @@ export default async function MessagesChatPage() {
         tone={otherTone}
         actions={<>
           <ChatInfoButton name={otherName} avatar={otherAvatar} tone={otherTone} photos={photos} />
+          <CallHistoryButton myId={v.id} />
           <CallButtons />
         </>}
       />
