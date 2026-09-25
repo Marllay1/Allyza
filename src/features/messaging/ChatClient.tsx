@@ -140,6 +140,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
   // Messages already on screen when the conversation opened: only later arrivals get the soft entrance.
   const [seenIds] = useState(() => new Set(initialMessages.map((m) => m.id)));
   const firstScroll = useRef(true);
+  const [dayZero] = useState(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); });
   const messagesRef = useRef(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
@@ -344,6 +345,16 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
     return out;
   }, [messages]);
 
+  // "Today" / "Yesterday" read better than a full date for the last two days.
+  const dayLabel = (key: string) => {
+    const [y, mo, d] = key.split("-").map(Number);
+    const diff = Math.round((new Date(y, mo - 1, d).getTime() - dayZero) / 86_400_000);
+    if (diff === 0 || diff === -1) {
+      const w = new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(diff, "day");
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    }
+    return formatDay(key, locale, { weekday: "long", day: "numeric", month: "long" });
+  };
   const time = (iso: string) => new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
   const lastMineId = [...messages].reverse().find((m) => m.author_id === me.id && !m.deleted_at)?.id;
 
@@ -374,7 +385,9 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
         )}
         {days.map(({ day, items }) => (
           <div key={day} className="grid gap-1.5 py-2">
-            <div className="eyebrow text-center sticky top-0 z-10 py-1">{formatDay(day, locale, { weekday: "long", day: "numeric", month: "long" })}</div>
+            <div className="eyebrow text-center sticky top-0 z-10 py-1">
+              <span className="inline-block rounded-full px-3 py-0.5 backdrop-blur" style={{ background: "color-mix(in srgb, var(--surface) 72%, transparent)" }}>{dayLabel(day)}</span>
+            </div>
             {items.map((m, ix) => {
               // Photos sent together (same sender, within two minutes) share one card, like a chat gallery.
               const isImg = (x?: ChatMessage) => !!x && x.kind === "image" && !x.deleted_at && !x.tmp && !!x.storage_path;
@@ -539,9 +552,9 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
               onChange={(e) => onType(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !("ontouchstart" in window)) { e.preventDefault(); send(); } }} />
             {text.trim() || files.length > 0 ? (
-              <button type="button" className="btn btn-primary !min-h-10 !px-3.5 shrink-0" onClick={send} disabled={busy} aria-label={t("common.send")}><AppIcon name="send" size={19} /></button>
+              <button type="button" className="btn btn-primary !min-h-10 !px-3.5 shrink-0 pop-in" onClick={send} disabled={busy} aria-label={t("common.send")}><AppIcon name="send" size={19} /></button>
             ) : recorder.supported ? (
-              <button type="button" className="icon-btn !size-10 shrink-0" aria-label={t("messaging.recordVoice")} disabled={inCall} onClick={() => { if (!inCall) void recorder.start(); }}><AppIcon name="mic" size={20} /></button>
+              <button type="button" className="icon-btn !size-10 shrink-0 pop-in" aria-label={t("messaging.recordVoice")} disabled={inCall} onClick={() => { if (!inCall) void recorder.start(); }}><AppIcon name="mic" size={20} /></button>
             ) : null}
           </div>
         )}
