@@ -2,9 +2,7 @@ import { redirect } from "next/navigation";
 import { ChatClient, type ChatMessage } from "@/features/messaging/ChatClient";
 import { ChatHeader } from "@/features/messaging/ChatHeader";
 import { ChatShell } from "@/features/messaging/ChatShell";
-import { CallButtons } from "@/features/messaging/CallSheet";
-import { CallHistoryButton } from "@/features/messaging/CallHistory";
-import { ChatInfoButton } from "@/features/messaging/ChatInfo";
+import { ChatHeaderMenus } from "@/features/messaging/ChatHeaderMenus";
 import { getT } from "@/lib/i18n/server";
 import { getPartner } from "@/lib/nickname";
 import { requireCouple } from "@/lib/session";
@@ -46,9 +44,7 @@ export default async function MessagesChatPage() {
         avatar={otherAvatar}
         tone={otherTone}
         actions={<>
-          <ChatInfoButton name={otherName} avatar={otherAvatar} tone={otherTone} photos={photos} />
-          <CallHistoryButton myId={v.id} />
-          <CallButtons />
+          <ChatHeaderMenus myId={v.id} name={otherName} avatar={otherAvatar} tone={otherTone} photos={photos} />
         </>}
       />
       <ChatClient

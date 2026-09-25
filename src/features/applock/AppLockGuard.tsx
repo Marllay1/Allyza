@@ -29,10 +29,16 @@ export function AppLockGuard({ idleSeconds, children }: { idleSeconds: number; c
     const root = document.documentElement;
     const hide = () => { root.classList.add("app-privacy"); hiddenAt.current = hiddenAt.current ?? Date.now(); };
     const show = () => {
-      root.classList.remove("app-privacy");
       const at = hiddenAt.current;
       hiddenAt.current = null;
-      if (at !== null && Date.now() - at >= idleSeconds * 1000) void lockAppNowAction().then(() => router.refresh());
+      if (at !== null && Date.now() - at >= idleSeconds * 1000) {
+        // Stay covered until the lock screen has replaced the app (it removes the cover when this guard unmounts):
+        // lifting it first showed the last open screen for a moment before the lock appeared.
+        void lockAppNowAction().then(() => router.refresh());
+        setTimeout(() => root.classList.remove("app-privacy"), 5000); // safety net if the refresh never lands
+        return;
+      }
+      root.classList.remove("app-privacy");
     };
     const onVisibility = () => (document.visibilityState === "hidden" ? hide() : show());
     document.addEventListener("visibilitychange", onVisibility);

@@ -17,7 +17,7 @@ import type { Translator } from "@/lib/i18n/translate";
 import { useReactions, type Reaction } from "@/lib/use-reactions";
 import { useSignedUrls } from "@/lib/use-signed-urls";
 import { playSfx } from "@/lib/sfx";
-import { haptic } from "@/lib/local-pref";
+import { haptic, setLocalPref, useLocalPref } from "@/lib/local-pref";
 import { useCall } from "@/features/calls/CallProvider";
 import { PhotoViewer } from "@/features/messaging/PhotoViewer";
 import { useVoiceRecorder } from "@/lib/use-voice-recorder";
@@ -102,7 +102,10 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
   const { t, locale } = useI18n();
   const { markRead } = useUnread();
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
-  const [text, setText] = useState("");
+  // The unsent text survives leaving the app (and a reload): it lives in local storage until it is sent.
+  const draftKey = `allyza.draft.${coupleId}`;
+  const text = useLocalPref(draftKey, "") ?? "";
+  const setText = useCallback((v: string) => setLocalPref(draftKey, v || null), [draftKey]);
   const [files, setFiles] = useState<File[]>([]);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
@@ -472,10 +475,10 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
           onClick={() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })}><AppIcon name="down" size={18} /></button>
       )}
 
-      <div className="relative z-20 shrink-0 border-t border-line px-2.5 pt-2 pb-[max(0.5rem,var(--sab,env(safe-area-inset-bottom)))] grid gap-1.5" style={{ background: "color-mix(in srgb, var(--surface) 92%, transparent)", backdropFilter: "blur(14px)" }}>
+      <div className="relative z-20 shrink-0 border-t border-line px-2.5 pt-2 pb-[max(0.5rem,var(--sab,env(safe-area-inset-bottom)))] grid grid-cols-[minmax(0,1fr)] gap-1.5" style={{ background: "color-mix(in srgb, var(--surface) 92%, transparent)", backdropFilter: "blur(14px)" }}>
         <ErrorNote code={error} />
         {replyTo && (
-          <div className="flex items-center gap-2 rounded-xl bg-surface2 px-3 py-2 text-sm">
+          <div className="flex items-center gap-2 min-w-0 rounded-xl bg-surface2 px-3 py-2 text-sm">
             <AppIcon name="replyArrow" size={14} className="text-muted shrink-0" />
             <span className="flex-1 min-w-0 truncate">{previewFor(replyTo, t)}</span>
             <button type="button" className="icon-btn !size-7 shrink-0" aria-label={t("common.cancel")} onClick={() => setReplyTo(null)}><AppIcon name="close" size={13} /></button>
