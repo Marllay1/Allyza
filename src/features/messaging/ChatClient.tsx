@@ -17,6 +17,7 @@ import type { Translator } from "@/lib/i18n/translate";
 import { useReactions, type Reaction } from "@/lib/use-reactions";
 import { useSignedUrls } from "@/lib/use-signed-urls";
 import { playSfx } from "@/lib/sfx";
+import { haptic } from "@/lib/local-pref";
 import { useCall } from "@/features/calls/CallProvider";
 import { PhotoViewer } from "@/features/messaging/PhotoViewer";
 import { useVoiceRecorder } from "@/lib/use-voice-recorder";
@@ -133,6 +134,9 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
     return idx >= 0 ? initialMessages[idx].id : null;
   }, [initialMessages, initialCursors.mine, me.id]);
 
+  // Messages already on screen when the conversation opened: only later arrivals get the soft entrance.
+  const [seenIds] = useState(() => new Set(initialMessages.map((m) => m.id)));
+  const firstScroll = useRef(true);
   const messagesRef = useRef(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
@@ -197,7 +201,11 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
     return () => { document.removeEventListener("visibilitychange", catchUp); window.removeEventListener("online", catchUp); supabase.removeChannel(data); supabase.removeChannel(tCh); typingCh.current = null; if (typingTimer.current) clearTimeout(typingTimer.current); };
   }, [coupleId, me.id, other.id, upsert, doMarkRead]);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [messages.length, typing]);
+  // Opening the conversation lands on the latest message at once; only new arrivals scroll smoothly.
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: firstScroll.current ? "auto" : "smooth", block: "end" });
+    firstScroll.current = false;
+  }, [messages.length, typing]);
 
   useEffect(() => {
     const el = scrollerRef.current;
@@ -241,6 +249,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
     const body = text.trim();
     const pendingFiles = files;
     if ((!body && !pendingFiles.length) || busy) return;
+    haptic(8);
     setBusy(true); setError(null);
     const replyId = replyTo?.id;
     setText(""); setFiles([]); setReplyTo(null);
@@ -268,6 +277,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
 
   const sendSticker = async (id: StickerId) => {
     setStickersOpen(false);
+    haptic(8);
     const replyId = replyTo?.id;
     setReplyTo(null);
     const tmp: ChatMessage = { id: `tmp-${crypto.randomUUID()}`, author_id: me.id, kind: "sticker", body: id, storage_path: null, duration_ms: null, reply_to: replyId ?? null, edited_at: null, deleted_at: null, created_at: new Date().toISOString(), tmp: true };
@@ -375,7 +385,7 @@ export function ChatClient({ coupleId, me, other, initialMessages, initialReacti
               const quoted = m.reply_to ? byId.get(m.reply_to) : null;
               const read = mine && !!theirCursor && last.created_at <= theirCursor;
               return (
-                <div key={m.id} id={`msg-${m.id}`} className={`flex items-end ${mine ? "flex-row-reverse gap-2" : "gap-1.5 -ml-2"} ${m.tmp ? "opacity-60" : ""}`}>
+                <div key={m.id} id={`msg-${m.id}`} className={`flex items-end ${mine ? "flex-row-reverse gap-2" : "gap-1.5 -ml-2"} ${m.tmp ? "opacity-60" : ""} ${!mine && !seenIds.has(m.id) ? "rise" : ""}`}>
                   {!mine && <Avatar path={other.avatar} tone={other.tone} size={26} className="mb-1" />}
                   <div className={`group relative max-w-[78%] flex flex-col ${mine ? "items-end" : "items-start"}`}>
                     {group.some((g) => g.id === unreadDividerAt) && (

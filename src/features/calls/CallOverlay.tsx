@@ -5,6 +5,7 @@ import { AppIcon } from "@/components/icons";
 import { Portal } from "@/components/Portal";
 import { useSpeaking } from "@/features/calls/use-speaking";
 import { useI18n } from "@/lib/i18n/provider";
+import { haptic } from "@/lib/local-pref";
 
 export type CallPhase = "outgoing" | "incoming" | "connecting" | "connected" | "ended";
 export type CallPerson = { id: string; name: string; avatar: string | null; tone: "rose" | "gold" };
@@ -64,7 +65,7 @@ function StreamVideo({ stream, muted, mirror, className }: { stream: MediaStream
 function RoundButton({ label, active, onClick, children, danger, good, big }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode; danger?: boolean; good?: boolean; big?: boolean }) {
   const tone = danger ? "bg-danger text-white" : good ? "bg-good text-white" : active ? "bg-white text-[#3b1f52]" : "bg-white/15 text-white backdrop-blur-xl border border-white/15";
   return (
-    <button type="button" onClick={onClick} aria-label={label} aria-pressed={active}
+    <button type="button" onClick={() => { haptic(10); onClick(); }} aria-label={label} aria-pressed={active}
       className={`${big ? "size-16" : "size-14"} rounded-full grid place-items-center transition duration-200 active:scale-90 motion-reduce:transition-none ${tone}`}>
       {children}
     </button>
@@ -186,9 +187,9 @@ function MiniCall({ p, status, remoteHasVideo }: { p: OverlayProps; status: stri
         {!(video && remoteHasVideo) && <div className="absolute inset-0 grid place-items-center pb-9"><Avatar path={p.other.avatar} tone={p.other.tone} size={56} /></div>}
         <p className="absolute inset-x-0 top-0 px-2 pt-1.5 text-center text-[0.68rem] tabular-nums bg-gradient-to-b from-black/55 to-transparent" role="status">{status}</p>
         <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 pb-1.5 pt-4 bg-gradient-to-t from-black/60 to-transparent" onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}>
-          <button type="button" aria-label={t("call.mute")} aria-pressed={p.muted} onClick={p.onToggleMute}
+          <button type="button" aria-label={t("call.mute")} aria-pressed={p.muted} onClick={() => { haptic(10); p.onToggleMute(); }}
             className={`size-8 rounded-full grid place-items-center ${p.muted ? "bg-white text-[#3b1f52]" : "bg-white/20"}`}><AppIcon name={p.muted ? "micOff" : "mic"} size={15} /></button>
-          <button type="button" aria-label={t("call.end")} onClick={p.onHangup} className="size-8 rounded-full grid place-items-center bg-danger"><AppIcon name="callEnd" size={15} /></button>
+          <button type="button" aria-label={t("call.end")} onClick={() => { haptic(10); p.onHangup(); }} className="size-8 rounded-full grid place-items-center bg-danger"><AppIcon name="callEnd" size={15} /></button>
         </div>
       </div>
       {docked && (
